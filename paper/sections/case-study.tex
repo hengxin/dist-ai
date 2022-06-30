@@ -8,7 +8,43 @@
 
 %%%%%%%%%%%%%%%%%%%%
 \subsection{Two-Phase Commit} \label{ss:2pc}
-\item We use Two-Phase Commit as an example. First, we extracted the main variables of this protocol as follows.
+
+We use Two-Phase Commit as an example. First, we need to extract the main variables of this protocol. Their types are listed as follows. They are marked on the top of the TLA+ code, so when the type check work is done, they can easily be extracted. 
+
+\begin{table} \label{tp-type}
+	\caption{Details of the TPCommit Variables}
+	\label{tab:freq}
+	\begin{tabular}{cccc}
+		\toprule
+		Name&Type\\
+		\midrule
+		{\texttt{rmState}} & (Str -> Str)\\
+		{\texttt{tmState}} & Str\\
+		{\texttt{tmPrepared}} & Set(Str)\\
+		{\texttt{msgs}} & Set([rm: Str, type: Str])\\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+The next step is to calculate the possible values of these variables, and to generate relations for them. Variable {\texttt{rmState}}, {\texttt{tmState}} and {\texttt{tmPrepared}} have clear value ranges, which have been listed in the {\texttt{TPTypeOK}} section. Some of these relations are listed below.
+
+{\texttt{tmState(x) : tmState = x}}, in which {\texttt{x}} can be either{\texttt{"init"}}, {\texttt{"commited"}} or {\texttt{"aborted"}}
+
+{\texttt{rmState(x,y) : rmState(x) = y}}, in which {\texttt{x}} can be all RMs, {\texttt{y}} can be the four strings specified by {\texttt{TPTypeOK}} section.
+
+{\texttt{tmPrepared(x) : x $\in$ tmPrepared}}, in which {\texttt{x}} can be all RMs.
+
+Relation generated from {\texttt{msgs}} is relatively difficult. First we need to calculate the maximum number of elements in {\texttt{msgs}}, which is 3.(The way to calculate this number is still unknown.) Each possible element (or record) in {\texttt{msgs}} contains two properties, which are {\texttt{type}} and {\texttt{rm}}. Thus we need to define three relations as below.
+
+{\texttt{msgs(x) : x $\in$ msgs}}
+
+{\texttt{msgs.type(x,y) : x.type = y}}
+
+{\texttt{msgs.rm(x,y) : x.rm = y}}
+
+It's worth noting that all the {\texttt{x}} occurred in these relations are unnamed variables. In practice they are given random names without repetition, such as {\texttt{msgsv1}}, to indicate that it is the first element of the set {\texttt{msgs}}. Using {\texttt{msgsv1}} here doesn't mean that we are sorting elements in a set, instead it is only a way to maintain the consistency among all these three relations. We are able to depict the states of {\texttt{msgs}} with these three relations.
+
+6 relations are defined above, and 31 predicates will be generated assuming that RM is a 2-element set. DistAI will use these predicates to handle further processes.
 
 %%%%%%%%%%%%%%%%%%%%
 \subsection{Paxos} \label{ss:paxos}
