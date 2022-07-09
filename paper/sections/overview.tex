@@ -3,6 +3,69 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Overview}  \label{section:overview}
 
+
+\subsection{流程}\label{ss:invgen}
+
+\begin{itemize}
+  \item 通过类型分析，得到\tlaplus{} 规约中的变量类型
+  \subitem Apalache工具, Json格式
+  \item 根据转换规则，将每个变量用一组relation表示
+  \item 对\tlaplus{}的trace，将每个状态中变量的值替换为relation的值，得到用关系表示的trace
+  \item 将用关系表示的trace发送给DistAI，得到候选的不变式
+  \subitem DistAI只能生成没有$\exists$的公式
+  \subitem 由于\tlaplus{}的变量的数据结构的复杂性，每个变量可能需要一组关系才能表示，这样的关系可能整体考虑才有意义，但是DistAI
+    的枚举没有这样的保证
+  \subitem 用关系表示时会引入局部变量
+  \item 将由relation组成的不变式中的relation替换成\tlaplus{}中变量的符号，得到用\tlaplus{}变量组成的候选不变式
+  \item 将候选的不便式通过Apalache通过检验
+\end{itemize}
+
+\subsection{转换规则}\label{ss:transrule}
+
+
+\tlaplus{} 的类型系统定义: 
+
+$
+  t \doteq Cons 
+  \mid Bool 
+  \mid Int 
+  \mid t \rightarrow t 
+  \mid Set(t) 
+  \mid t\times\cdots\times t 
+  \mid \lbrack nm_1:t,\cdots,nm_k:t\rbrack
+$
+
+将每一个变量$v$,用一组关系$RS_v$表示:
+
+\begin{itemize}
+  \item 若$v.type = Cons\mid Int\mid Bool$, 定义关系$R_v(\_):v=x \leftrightarrow R_v(x)$. 
+        则$RS_v =R_v$.
+  \item 若$v.type = Set(t)$,定义$R_v(\_):x\in v \leftrightarrow R_v(x)$
+    \subitem 若$t\in tb$, 则$RS_v = R_v$
+    \subitem 若$t \notin tb$, 则$RS_v = R_v(x)\wedge RS_x$($x$是$t$类型的一个占位符)
+  \item 若$v.type = T_1\times T_2\times \cdots \times T_k$, 则定义$k$个关系$R_i(\_): v[i]=x \leftrightarrow  R_i(x)$。
+        对每个关系$R_i$, 定义$RS_i$:
+    \subitem 若$T_i\in tb$, 则$RS_i=R_i$
+    \subitem 若$T_i \notin tb$, 则$RS_i=R_i(x) \wedge RS_x$($x$是$T_i$类型的占位符)
+      \\
+        则$RS_v = RS_1\wedge RS_2\wedge \cdots \wedge RS_k$
+  \item 若$v.type = T_1\rightarrow T_2 \rightarrow \cdots \rightarrow T_k$, 则定义$(k+1)$元关系
+        $R_v(\_,\cdots\_):v(x_1,\cdots,x_k) = x_{k+1} \equiv R_v(x_1,\cdots,x_k.x_{k+1})$。其中,
+    \subitem 若$T_i\in \{Cons,Int,Bool\}$, 则$x_i$为具体的值, 且$RS_i = true$
+    \subitem 若$T_i \notin tb$, 则$x_i$为$T_i$类型的占位符, 且$RS_i = RS_{x_i}$
+    \\
+    则$RS_v = R_v(x_1,\cdots,x_k,x_{k+1}) \wedge RS_{x_1} \wedge RS_{x_2} \wedge \cdots \wedge RS_{x_{k+1}}$
+  \item 若$v.type = [nm_1:T_1,\cdots,nm_k:T_k]$, 由于record类型的各个项之间没有顺序关系, 所以可以按照某种规则(如字典序)
+      将$\{nm_1,\cdots,nm_k\}$ 进行排序. 假设已经进行了排序, 那么record类型的规则和$k$元tuple相同。定义$k$个关系$R_i(\_)$: 
+      $v.nm_k = x \leftrightarrow R_k(x)$. 对于每个关系$R_i$, 定义$RS_i:$
+    \subitem 若$T_i \in \{Int,Bool,Cons\}$, 则$RS_i = R_i$
+    \subitem 若$T_i \notin \{Int,Bool,Cons\}, 则RS_i = R_i(x)\wedge RS_x$
+    \\
+  则$RS_v = RS_1\wedge RS_2\wedge \cdots \wedge RS_k$
+
+\end{itemize}
+
+
 %%%%%%%%%%%%%%%%%%%%
 \subsection{Sampling \tlaplus{} Traces} \label{ss:sampling}
 

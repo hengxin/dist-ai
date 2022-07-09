@@ -65,4 +65,19 @@ There is another way to depict {\texttt{msgs}}. The six relations used to descri
 %%%%%%%%%%%%%%%%%%%%
 \subsection{Paxos} \label{ss:paxos}
 
+关于Paxos规约中的例子:
+\begin{itemize}
+  \item 变量$PrepareMsg : Node \rightarrow Ballot \rightarrow \langle Ballot,Value\rangle $. 
+        那么$ \forall s\in Node, a,b\in Ballot, v\in Value: PrepareMsg[s][a] = \langle b,v\rangle
+          \leftrightarrow R_p(s,a,tup) \wedge R_{tup1}(b) \wedge R_{tup2}(v)$ ($tup$是类型$Ballot\times Value$的一个符号)
+  \item 变量$Decision : Node \rightarrow Ballot \rightarrow Set(Value)$, 那么$\forall s \in Node, a \in Ballot,
+          v \in Value: v \in Decision[s][a] \leftrightarrow R(s,a,set) \wedge R_{set}(v)$ ($set$是类型$Set(Value)$的
+          一个符号)
+  \item 若定义$Messages = [type : \{\text{``prepare''} ,\text{``aborted''}\}, svr : Server]$, 变量$msgs \subseteq Messages$. 
+          那么若$\forall tp \in \{\text{``prepare''},\text{``aborted''} \}, s \in Server : [tp,s] \in msgs \leftrightarrow
+           R_(m) \wedge R\_m\_1(tp) \wedge R\_m\_2(s)$ ($m$是$Message$类型的一个符号)
+  \item $Messages = [type : \{\text{``prepare''} ,\text{``aborted''}\}, svr : Server] \cup [type : \{\text{``commit''}\}]$, 不能直接转换.
+\end{itemize}
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

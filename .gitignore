@@ -277,3 +277,9 @@ TSWLatexianTemp*
 
 .history/
 .idea/
+
+
+# osx
+.DS_Store
+
+paper/dist-ai.pdf
