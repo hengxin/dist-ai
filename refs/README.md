@@ -3,9 +3,10 @@
 面向 TLA+ 规约, 自动生成归纳不变式 (Inductive Invariants)
 
 # References
-
+- [ivy][./ivy/]
+  > On Ivy
 - [dist-ai](./dist-ai/)
-  > Automated Invariant Inference for Distributed Protocols
+  > On the `DistAI` paper
 - [dist-verification](./dist-verification/)
   > Formal Verification of Distributed Protocols
 - [tla-tlc-tlaps](./tla-tlc-tlaps/)
