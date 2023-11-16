@@ -1,0 +1,222 @@
+#lang ivy1.7
+
+module ring_topology(carrier) = {
+    relation btw(X:carrier,Y:carrier, Z:carrier) # Y is on the acyclic path from X to Z
+
+    # Axiom defining the btw relation - note it's not reflexive
+    # not needed: axiom btw(X,Y,Z) -> X ~= Y & X ~= Z & Y ~= Z  # anti-reflexive
+    axiom btw(W, X, Y) & btw(W, Y, Z) -> btw(W, X, Z)  # transitive
+    axiom btw(W, X, Y) -> ~btw(W, Y, X)  # acyclic
+    axiom btw(W, X, Y) | btw(W, Y, X) | W=X | X=Y  # total
+    axiom (btw(X, Y, Z) & X ~= Z) -> btw(Y, Z, X)  # cyclic permutations
+}
+
+type node
+
+instantiate ring : ring_topology(node)
+
+relation a(X : node)                    # active set
+relation s1(X : node, Y : node)         # first successor
+relation in_s1(X : node)
+relation s2(X : node, Y : node)         # second successor
+relation in_s2(X : node)
+relation p(X : node, Y : node)          # predecessor
+
+individual org : node
+individual other : node
+axiom other ~= org
+
+relation reach(X: node)
+relation error(X: node)
+
+after init {
+    a(X) := X = org | X = other;
+    s1(X, Y) := (X = org & Y = other) | (X = other & Y = org);
+    in_s1(X) := X = org | X = other;
+    s2(X, Y) := false;
+    in_s2(X) := false;
+    p(X, Y) := (X = org & Y = other) | (X = other & Y = org);
+    reach(X) := X = org;
+    error(X) := false;
+}
+
+action join(x : node, y : node) = {
+    require ~a(x);
+    require a(y);
+    require ~ring.btw(x, org, y);
+    a(x) := true;
+    s1(x, Y) := y = Y;
+    in_s1(x) := true;
+    s2(x, Y) := false;
+    in_s2(x) := false;
+    p(x, Y) := false;
+}
+
+action stabilize(x : node, y : node, z : node) = {
+    require a(x);
+    require s1(x, y);
+    require a(y);
+    require p(y, z);
+    require ring.btw(x, z, y);
+    s1(x, Z) := Z = z;
+    in_s1(x) := true;
+    s2(x, Y) := Y = y;
+    in_s2(x) := true;
+}
+
+action notify(x : node, y : node, z : node)  = {
+    require a(x);
+    require s1(x, y);
+    require a(y);
+    require p(y, z) | ~p(y, X);
+    require ring.btw(z, x, y);
+    p(y, X) := X = x;
+}
+
+action inherit(x : node, y : node, z : node) = {
+    require a(x);
+    require s1(x, y);
+    require a(y);
+    require s1(y, z);
+    s2(x, Z) := Z = z;
+    in_s2(x) := true;
+}
+
+action remove(x : node, y : node, z : node) = {
+    require a(x);
+    require s1(x, y);
+    require ~a(y);
+    require s2(x, z);
+    s1(x, Z) := Z = z;
+    in_s1(x) := true;
+    s2(x, Y) := false;
+    in_s2(x) := false;
+}
+
+action fail(x : node) = {
+    require a(x);
+    require x ~= org; # assume origin node cannot fail
+    # assume the last active successor of any does not fail
+    require (s1(Y, x)) -> in_s2(Y);
+    require (s1(Y, x) & s2(Y, Z)) -> a(Z);
+    require (s1(X, Y) & s2(X, x)) -> (Y ~= x & a(Y));
+    a(x) := false;
+    p(x, Y) := false;
+    s1(x, Y) := false;
+    in_s1(x) := false;
+    s2(x, Y) := false;
+    in_s2(x) := false;
+}
+
+action reach_org(x : node, y : node, z : node) = {
+    require (s1(x, y) & a(y) & reach(y)) | (s1(x, y) & ~a(y) & s2(x, z) & a(z) & reach(z));
+    reach(x) := true;
+}
+
+action remove_org(x : node, y : node, z : node) = {
+    require x ~= org;
+    require s1(x, y);
+    require (~a(y) | ~reach(y));
+    require ~a(y) -> (~s2(x, Z) | s2(x, z));
+    require (~a(y) & s2(x, z)) -> (~a(z) | ~reach(z));
+    reach(x) := false;
+}
+
+# this "action" is used to define the error state
+action test(x : node) = {
+    require (s1(X, Y) & a(Y) & reach(Y)) -> reach(X);
+    require (s1(X, Y) & ~a(Y) & s2(X, Z) & a(Z) & reach(Z)) -> reach(X);
+    require (ring.btw(x, Y, org) & a(Y)) -> reach(Y);
+    require a(x);
+    require ~reach(x);
+    require in_s1(x) -> exists Y. s1(x, Y);
+    require in_s2(x) -> exists Y. s2(x, Y);
+    error(x) := true;
+}
+
+export join
+export stabilize
+export inherit
+export remove
+export notify
+export reach_org
+export remove_org
+export fail
+export test
+
+invariant [1000000] ~error(N)
+
+invariant [100] forall N1:node. in_s1(N1) | ~a(N1)
+invariant [101] forall N1:node. in_s1(N1) | ~s1(N1,N1)
+invariant [102] forall N1:node. a(N1) | ~s2(N1,N1)
+invariant [103] forall N1:node. a(N1) | ~org=N1
+invariant [104] forall N1:node. in_s1(N1) | ~in_s2(N1)
+invariant [105] forall N1:node. in_s1(N1) | ~org=N1
+invariant [106] forall N1:node. a(N1) | ~s1(N1,N1)
+invariant [107] forall N1:node. ~org=N1 | ~other=N1
+invariant [108] forall N1:node. reach(N1) | ~org=N1
+invariant [109] forall N1:node. in_s2(N1) | ~s2(N1,N1)
+invariant [110] forall N1:node. a(N1) | ~in_s1(N1)
+invariant [111] forall N1:node. ~s1(N1,N1) | ~other=N1
+invariant [112] forall N1:node. in_s1(N1) | ~s2(N1,N1)
+invariant [113] forall N1:node. org=N1 | ~s1(N1,N1)
+invariant [114] forall N1:node. a(N1) | ~in_s2(N1)
+invariant [115] forall N1:node. s2(N1,N1) | ~s1(N1,N1) | ~in_s2(N1)
+invariant [200] forall N1:node, N2:node. N1 ~= N2 -> in_s1(N1) | in_s2(N2) | ~s1(N2,N1)
+invariant [201] forall N1:node, N2:node. N1 ~= N2 -> s1(N1,N2) | ~s2(N1,N1) | ~org=N2
+invariant [202] forall N1:node, N2:node. N1 ~= N2 -> ~s1(N2,N1) | ~s2(N2,N1) | ~org=N2
+invariant [203] forall N1:node, N2:node. N1 ~= N2 -> ~org=N1 | ~org=N2
+invariant [204] forall N1:node, N2:node. N1 ~= N2 -> ~s1(N2,N1) | ~s1(N2,N2)
+invariant [205] forall N1:node, N2:node. N1 ~= N2 -> a(N2) | ~s1(N2,N1)
+invariant [206] forall N1:node, N2:node. N1 ~= N2 -> ~other=N1 | ~other=N2
+invariant [207] forall N1:node, N2:node. N1 ~= N2 -> ~s2(N2,N1) | ~s2(N2,N2)
+invariant [208] forall N1:node, N2:node. N1 ~= N2 -> ~s1(N2,N2) | ~s2(N2,N1)
+invariant [209] forall N1:node, N2:node. N1 ~= N2 -> in_s2(N2) | ~s2(N2,N1)
+invariant [210] forall N1:node, N2:node. N1 ~= N2 -> org=N1 | org=N2 | ~s1(N1,N2) | ~s1(N2,N1)
+invariant [211] forall N1:node, N2:node. N1 ~= N2 -> org=N1 | org=N2 | ~s1(N2,N1) | ~s2(N2,N2)
+invariant [300] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | ~s1(N1,N2) | ~s1(N2,N3) | ~s2(N2,N1)
+invariant [301] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | org=N1 | ~s1(N1,N2) | ~s1(N3,N1)
+invariant [302] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N2,N1) | ~s1(N3,N2) | ~s2(N2,N1) | ~ring.btw(N1,N2,N3)
+invariant [303] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | ~s1(N2,N3) | ~s1(N3,N1) | ~s2(N3,N2)
+invariant [304] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | org=N3 | ~s1(N2,N3) | ~s1(N3,N1)
+invariant [305] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> s1(N1,N2) | ~s2(N1,N3) | ~ring.btw(N1,N2,N3) | ~org=N2
+invariant [306] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> a(N1) | a(N2) | ~s1(N3,N2) | ~s2(N3,N1)
+invariant [307] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> s1(N3,N2) | ring.btw(N1,N2,N3) | ~s2(N3,N1) | ~org=N2
+invariant [308] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> org=N3 | ~s1(N1,N3) | ~s2(N1,N2) | ~ring.btw(N1,N2,N3)
+invariant [309] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N3,N2) | ~s2(N3,N3) | ~org=N1
+invariant [310] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N1,N3) | ~s1(N2,N1) | ~s2(N1,N2) | ~ring.btw(N1,N2,N3)
+invariant [311] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | ~s1(N1,N2) | ~s1(N2,N3) | ~s1(N3,N1)
+invariant [312] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N2,N1) | ~s1(N3,N2) | ~s2(N2,N3) | ~ring.btw(N1,N2,N3)
+invariant [313] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> s1(N1,N2) | ~s1(N3,N1) | ~s2(N1,N3) | ~org=N2
+invariant [314] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N2,N3) | ~s1(N3,N2) | ~org=N1
+invariant [315] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N3,N2) | ~s2(N3,N2) | ~org=N1
+invariant [316] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | org=N3 | ~s1(N2,N3) | ~s2(N2,N1)
+invariant [317] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> s1(N2,N1) | ring.btw(N1,N2,N3) | ~s2(N2,N3) | ~org=N1
+invariant [318] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s2(N1,N2) | ~s2(N1,N3)
+invariant [319] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N1,N3) | ~s1(N2,N1) | ~s1(N3,N2) | ~ring.btw(N1,N2,N3)
+invariant [320] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | ~s1(N1,N2) | ~org=N3
+invariant [321] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> org=N1 | ~s1(N1,N3) | ~s1(N2,N1) | ~ring.btw(N1,N2,N3)
+invariant [322] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N1,N3) | ~s1(N3,N2) | ~s2(N3,N1) | ~ring.btw(N1,N2,N3)
+invariant [323] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | ~s1(N1,N2) | ~s1(N3,N1) | ~s2(N1,N2)
+invariant [324] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N3,N2) | ~ring.btw(N1,N2,N3) | ~org=N1
+invariant [325] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | ~s1(N3,N1) | ~org=N2
+invariant [326] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N3,N1) | ~s1(N3,N2)
+invariant [327] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | org=N1 | ~s1(N3,N1) | ~s2(N3,N2)
+invariant [328] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> org=N2 | ~s1(N3,N2) | ~s2(N3,N1) | ~ring.btw(N1,N2,N3)
+invariant [329] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | ~s1(N2,N3) | ~org=N1
+invariant [330] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> org=N2 | ~s1(N2,N1) | ~s1(N3,N2) | ~ring.btw(N1,N2,N3)
+invariant [331] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N1,N3) | ~ring.btw(N1,N2,N3) | ~org=N2
+invariant [332] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> s1(N2,N3) | ~s2(N2,N1) | ~ring.btw(N1,N2,N3) | ~org=N3
+invariant [333] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | org=N2 | ~s1(N1,N2) | ~s1(N2,N3)
+invariant [334] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> s1(N3,N1) | ~s2(N3,N2) | ~ring.btw(N1,N2,N3) | ~org=N1
+invariant [335] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | ~s1(N1,N2) | ~s1(N3,N1) | ~s2(N1,N3)
+invariant [336] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | ~s1(N2,N3) | ~s1(N3,N1) | ~s2(N3,N1)
+invariant [337] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | ~s1(N1,N2) | ~s1(N2,N3) | ~s2(N2,N3)
+invariant [338] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> s1(N1,N3) | ring.btw(N1,N2,N3) | ~s2(N1,N2) | ~org=N3
+invariant [339] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> org=N3 | ~s1(N1,N3) | ~s1(N3,N2) | ~ring.btw(N1,N2,N3)
+invariant [340] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> org=N1 | ~s1(N2,N1) | ~s2(N2,N3) | ~ring.btw(N1,N2,N3)
+invariant [341] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N2,N1) | ~ring.btw(N1,N2,N3) | ~org=N3
+invariant [342] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ring.btw(N1,N2,N3) | org=N2 | ~s1(N1,N2) | ~s2(N1,N3)
+invariant [343] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N1,N3) | ~s1(N2,N1) | ~s2(N1,N3) | ~ring.btw(N1,N2,N3)
+invariant [344] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N1,N3) | ~s1(N3,N2) | ~s2(N3,N2) | ~ring.btw(N1,N2,N3)
+invariant [345] forall N1:node, N2:node, N3:node. N1 ~= N2 & N1 ~= N3 & N2 ~= N3 -> ~s1(N1,N2) | ~s1(N3,N2) | ~s2(N1,N3) | ~org=N1

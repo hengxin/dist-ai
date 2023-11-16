@@ -1,0 +1,134 @@
+#lang ivy1.7
+
+type thread
+type ticket
+
+relation le(T:ticket, S:ticket)
+axiom le(X,X)
+axiom le(X, Y) & le(Y, Z) -> le(X, Z)
+axiom le(X, Y) & le(Y, X) -> X = Y
+axiom le(X, Y) | le(Y, X)
+individual zero:ticket
+axiom forall X. le(zero, X)
+
+relation pc1(T:thread)
+relation pc2(T:thread)
+relation pc3(T:thread)
+individual service: ticket
+individual next_ticket: ticket
+relation m(T:thread, S:ticket)  # use relation and not a function to be in EPR
+
+after init  {
+  pc1(T) := true;
+  pc2(T) := false;
+  pc3(T) := false;
+  service := zero;
+  next_ticket := zero;
+  m(T,K) := K = zero;
+}
+
+#definition succ(x: ticket, y:ticket) = (~le(y,x) & forall Z:ticket. ~le(Z,x) -> le(y,Z))
+
+
+action step12(t:thread, new_next_ticket:ticket ) = {
+    require (pc1(t));
+
+    require (~le(new_next_ticket,next_ticket) & forall Z:ticket. ~le(Z,next_ticket) -> le(new_next_ticket,Z));
+
+    m(t,K) := (K = next_ticket);
+
+    next_ticket := new_next_ticket;
+
+    pc1(t) := false;
+    pc2(t) := true;
+}
+
+action step23(t:thread, k:ticket ) = {
+    require (pc2(t));
+    require (m(t,k));
+    require le(k, (service));
+
+    pc2(t) := false;
+    pc3(t) := true;
+}
+
+action step31(t:thread, new_service:ticket ) = {
+    require (pc3(t));
+
+    require (~le(new_service,(service)) & forall Z:ticket. ~le(Z,(service)) -> le(new_service,Z));
+    service := new_service;
+
+    pc3(t) := false;
+    pc1(t) := true;
+}
+
+export step12
+export step23
+export step31
+
+# safety property
+invariant [1000000] pc3(T1) & pc3(T2) -> T1 = T2
+
+invariant [100] forall TH1:thread. forall TI1:ticket. ~pc1(TH1) | ~pc2(TH1)
+invariant [101] forall TH1:thread. forall TI1:ticket. ~pc1(TH1) | ~pc3(TH1)
+invariant [102] forall TH1:thread. forall TI1:ticket. pc1(TH1) | ~zero=TI1 | ~next_ticket=TI1
+invariant [103] forall TH1:thread. forall TI1:ticket. pc1(TH1) | pc2(TH1) | pc3(TH1)
+invariant [104] forall TH1:thread. forall TI1:ticket. service=TI1 | ~m(TH1,TI1) | ~next_ticket=TI1
+invariant [105] forall TH1:thread. forall TI1:ticket. m(TH1,TI1) | ~pc3(TH1) | ~service=TI1
+invariant [106] forall TH1:thread. forall TI1:ticket. ~pc2(TH1) | ~pc3(TH1)
+invariant [107] forall TH1:thread. forall TI1:ticket. pc1(TH1) | ~service=TI1 | ~next_ticket=TI1
+invariant [108] forall TH1:thread. forall TI1:ticket. pc1(TH1) | ~m(TH1,TI1) | ~next_ticket=TI1
+invariant [109] forall TH1:thread. forall TI1:ticket. service=TI1 | ~zero=TI1 | ~next_ticket=TI1
+invariant [110] forall TH1:thread. forall TI1:ticket. m(TH1,TI1) | ~zero=TI1 | ~next_ticket=TI1
+invariant [111] forall TH1:thread. forall TI1:ticket. zero=TI1 | ~m(TH1,TI1) | ~next_ticket=TI1
+invariant [112] forall TH1:thread. forall TI1:ticket. service=TI1 | ~pc3(TH1) | ~m(TH1,TI1)
+invariant [113] forall TH1:thread. exists TI1:ticket. (service=TI1 & next_ticket=TI1) | (~m(TH1,TI1) & ~service=TI1)
+invariant [114] forall TH1:thread. exists TI1:ticket. (service=TI1 & next_ticket=TI1) | (~zero=TI1 & ~service=TI1)
+invariant [115] forall TH1:thread. exists TI1:ticket. (m(TH1,TI1) & zero=TI1) | (~m(TH1,TI1) & ~service=TI1)
+invariant [116] forall TH1:thread. exists TI1:ticket. (zero=TI1 & service=TI1) | (~service=TI1 & ~next_ticket=TI1)
+invariant [117] forall TH1:thread. exists TI1:ticket. (m(TH1,TI1) & ~next_ticket=TI1) | (zero=TI1 & next_ticket=TI1)
+invariant [118] forall TH1:thread. exists TI1:ticket. (m(TH1,TI1) & service=TI1) | (~service=TI1 & ~next_ticket=TI1)
+invariant [119] forall TH1:thread. exists TI1:ticket. (m(TH1,TI1) & zero=TI1) | (~service=TI1 & ~next_ticket=TI1)
+invariant [120] forall TH1:thread. exists TI1:ticket. (m(TH1,TI1) & next_ticket=TI1) | (next_ticket=TI1 & ~zero=TI1)
+invariant [121] forall TH1:thread. exists TI1:ticket. pc1(TH1) | (next_ticket=TI1 & ~service=TI1)
+invariant [122] forall TH1:thread. exists TI1:ticket. (m(TH1,TI1) & next_ticket=TI1) | ~service=TI1
+invariant [123] forall TH1:thread. exists TI1:ticket. (m(TH1,TI1) & next_ticket=TI1) | (zero=TI1 & ~next_ticket=TI1)
+invariant [124] forall TH1:thread. exists TI1:ticket. (m(TH1,TI1) & zero=TI1) | (~zero=TI1 & ~next_ticket=TI1)
+invariant [125] forall TH1:thread. exists TI1:ticket. pc1(TH1) | (service=TI1 & ~next_ticket=TI1)
+invariant [126] forall TH1:thread. exists TI1:ticket. (m(TH1,TI1) & zero=TI1) | (~m(TH1,TI1) & ~next_ticket=TI1)
+invariant [127] forall TH1:thread. exists TI1:ticket. (m(TH1,TI1) & zero=TI1) | (~zero=TI1 & ~service=TI1)
+invariant [128] forall TH1:thread. exists TI1:ticket. service=TI1
+invariant [129] forall TH1:thread. exists TI1:ticket. (m(TH1,TI1) & service=TI1 & ~next_ticket=TI1) | ~pc3(TH1)
+invariant [130] forall TH1:thread. exists TI1:ticket. pc1(TH1) | pc2(TH1) | (m(TH1,TI1) & service=TI1)
+invariant [200] forall TH1:thread. forall TI1:ticket, TI2:ticket. ~le(TI2, TI1) -> ~zero=TI2
+invariant [201] forall TH1:thread. forall TI1:ticket, TI2:ticket. ~le(TI2, TI1) -> ~service=TI1 | ~service=TI2
+invariant [202] forall TH1:thread. forall TI1:ticket, TI2:ticket. ~le(TI2, TI1) -> ~next_ticket=TI1 | ~next_ticket=TI2
+invariant [203] forall TH1:thread. forall TI1:ticket, TI2:ticket. ~le(TI2, TI1) -> ~m(TH1,TI2) | ~next_ticket=TI2
+invariant [204] forall TH1:thread. forall TI1:ticket, TI2:ticket. ~le(TI2, TI1) -> ~service=TI2 | ~next_ticket=TI1
+invariant [205] forall TH1:thread. forall TI1:ticket, TI2:ticket. ~le(TI2, TI1) -> ~m(TH1,TI1) | ~m(TH1,TI2)
+invariant [206] forall TH1:thread. forall TI1:ticket, TI2:ticket. ~le(TI2, TI1) -> ~m(TH1,TI2) | ~next_ticket=TI1
+invariant [207] forall TH1:thread. forall TI1:ticket, TI2:ticket. ~le(TI2, TI1) -> pc2(TH1) | ~m(TH1,TI2) | ~service=TI1
+invariant [208] forall TH1:thread. forall TI1:ticket, TI2:ticket. ~le(TI2, TI1) -> ~pc1(TH1) | ~m(TH1,TI2) | ~service=TI2
+invariant [300] forall TH1:thread, TH2:thread. forall TI1:ticket. TH1 ~= TH2 -> ~pc3(TH1) | ~pc3(TH2)
+invariant [301] forall TH1:thread, TH2:thread. forall TI1:ticket. TH1 ~= TH2 -> pc1(TH1) | pc2(TH1) | ~pc3(TH2)
+invariant [302] forall TH1:thread, TH2:thread. forall TI1:ticket. TH1 ~= TH2 -> pc1(TH1) | ~m(TH2,TI1) | ~next_ticket=TI1
+invariant [303] forall TH1:thread, TH2:thread. forall TI1:ticket. TH1 ~= TH2 -> m(TH1,TI1) | ~m(TH2,TI1) | ~next_ticket=TI1
+invariant [304] forall TH1:thread, TH2:thread. forall TI1:ticket. TH1 ~= TH2 -> zero=TI1 | ~m(TH1,TI1) | ~m(TH2,TI1)
+invariant [305] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> pc1(TH1) | pc1(TH2) | (~service=TI1 & ~next_ticket=TI1)
+invariant [306] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> (m(TH1,TI1) & m(TH2,TI1)) | (~m(TH1,TI1) & ~next_ticket=TI1)
+invariant [307] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> (m(TH1,TI1) & m(TH2,TI1)) | (~zero=TI1 & ~next_ticket=TI1)
+invariant [308] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> pc1(TH1) | pc1(TH2) | (m(TH1,TI1) & ~m(TH2,TI1))
+invariant [309] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> (m(TH1,TI1) & m(TH2,TI1)) | (~service=TI1 & ~next_ticket=TI1)
+invariant [310] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> pc1(TH1) | (~m(TH1,TI1) & ~m(TH2,TI1) & ~service=TI1)
+invariant [311] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> (m(TH2,TI1) & next_ticket=TI1) | (next_ticket=TI1 & ~m(TH1,TI1))
+invariant [312] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> (m(TH1,TI1) & m(TH2,TI1)) | (~m(TH2,TI1) & ~service=TI1)
+invariant [313] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> pc1(TH1) | (m(TH1,TI1) & ~service=TI1) | ~pc3(TH2)
+invariant [314] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> (m(TH1,TI1) & ~m(TH2,TI1)) | (m(TH2,TI1) & zero=TI1)
+invariant [315] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> (m(TH1,TI1) & m(TH2,TI1)) | (~zero=TI1 & ~service=TI1)
+invariant [316] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> (m(TH1,TI1) & m(TH2,TI1)) | (zero=TI1 & ~next_ticket=TI1)
+invariant [317] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> pc1(TH1) | (m(TH1,TI1) & ~zero=TI1) | ~pc3(TH2)
+invariant [318] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> (m(TH1,TI1) & ~next_ticket=TI1) | (m(TH2,TI1) & next_ticket=TI1)
+invariant [319] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> (m(TH1,TI1) & zero=TI1) | (m(TH1,TI1) & ~m(TH2,TI1))
+invariant [320] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> pc1(TH1) | (service=TI1 & ~m(TH1,TI1)) | ~pc3(TH2)
+invariant [321] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> pc1(TH1) | pc1(TH2) | (~zero=TI1 & ~next_ticket=TI1)
+invariant [322] forall TH1:thread, TH2:thread. exists TI1:ticket. TH1 ~= TH2 -> pc1(TH1) | (zero=TI1 & ~m(TH1,TI1)) | ~pc3(TH2)

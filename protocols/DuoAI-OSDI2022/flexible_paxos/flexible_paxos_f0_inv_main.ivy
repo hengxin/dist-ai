@@ -1,0 +1,162 @@
+#lang ivy1.7
+
+# from Paxos Made EPR
+
+################################################################################
+#
+# Modules that should probably come from a standard library
+#
+################################################################################
+
+################################################################################
+#
+# Module for axiomatizing a total order
+#
+################################################################################
+
+module total_order(r) = {
+    axiom r(X,X)                        # Reflexivity
+    axiom r(X, Y) & r(Y, Z) -> r(X, Z)  # Transitivity
+    axiom r(X, Y) & r(Y, X) -> X = Y    # Anti-symmetry
+    axiom r(X, Y) | r(Y, X)             # Totality
+}
+
+
+################################################################################
+#
+# Types, relations and functions describing state of the network
+#
+################################################################################
+
+type round
+type value
+# two types of quorums
+type quorum_1
+type quorum_2
+type node
+
+individual none: round
+relation le(X:round, Y:round)
+instantiate total_order(le)
+
+
+relation member_1(N:node, Q:quorum_1)
+relation member_2(N:node, Q:quorum_2)
+# quorums of different type intersect
+axiom forall Q1:quorum_1, Q2:quorum_2 . exists N:node. member_1(N, Q1) & member_2(N, Q2)
+
+relation one_a(R:round)
+relation one_b_max_vote(N:node, R1:round, R2:round, V:value)
+relation one_b(N:node, R:round) # := exists RMAX, V. one_b_max_vote(N,R,RMAX,V)
+relation left_rnd(N:node, R:round) # := exists R2, RMAX, V. ~le(R2,R) & one_b_max_vote(N,R,RMAX,V)
+relation proposal(R:round, V:value) # 2a
+relation vote(N:node, R:round, V:value) # 2b
+relation decision(N:node, R:round, V:value) # got 2b from a quorum
+
+after init{
+    one_a(R) := false;
+    one_b_max_vote(N,R1,R2,V)  := false;
+    one_b(N,R) := false;
+    left_rnd(N,R) := false;
+    proposal(R,V) := false;
+    vote(N,R,V) := false;
+    decision(N,R,V) := false;
+}
+
+action send_1a(r:round) = {
+    # a proposer selects a round and sends a message asking nodes to join the round
+    require r ~= none;
+    one_a(r) := true
+}
+
+action join_round(n:node, r:round, maxr:round, v:value) = {
+    # receive 1a and answer with 1b
+    require r ~= none;
+    require one_a(r);
+    require ~left_rnd(n,r);
+
+    # find the maximal vote in a round less than r
+    require ((maxr = none & forall MAXR:round,V:value. ~(~le(r,MAXR) & vote(n,MAXR,V))) |
+            (maxr ~= none & ~le(r,maxr) & vote(n,maxr,v) &
+            (forall MAXR:round,V:value. (~le(r,MAXR) & vote(n,MAXR,V)) -> le(MAXR,maxr))
+           ));
+    # send the 1b message
+    one_b_max_vote(n,r,maxr,v) := true;
+    one_b(n,r) := true;
+    left_rnd(n,R) := left_rnd(n,R) | ~le(r,R)
+}
+
+
+action propose(r:round, q:quorum_1, maxr:round, v:value) = {
+    # receive a quorum of 1b's and send a 2a (proposal)
+    require r ~= none;
+    require ~proposal(r,V);
+    require forall N:node. member_1(N, q) -> one_b(N,r);
+
+    # find the maximal max_vote in the quorum
+    require ((maxr = none & forall N:node,MAXR:round,V:value. ~(member_1(N, q) & ~le(r,MAXR) & vote(N,MAXR,V))) |
+            (maxr ~= none &
+            (exists N:node. member_1(N, q) & ~le(r,maxr) & vote(N,maxr,v)) &
+            (forall N:node,MAXR:round,V:value. (member_1(N, q) & ~le(r,MAXR) & vote(N,MAXR,V)) -> le(MAXR,maxr))
+           ));
+    # propose value v
+    proposal(r, v) := true
+}
+
+action cast_vote(n:node, v:value, r:round) = {
+    # receive a 2a and send 2b
+    require r ~= none;
+    require ~left_rnd(n,r);
+    require proposal(r, v);
+    vote(n, r, v) := true
+}
+
+action decide(n:node, r:round, v:value, q:quorum_2) = {
+    # get 2b from a quorum
+    require r ~= none;
+    require member_2(N, q) -> vote(N, r, v);
+    decision(n, r, v) := true
+}
+
+export send_1a
+export join_round
+export propose
+export cast_vote
+export decide
+
+
+# safety property:
+invariant [1000000] (decision(N1,R1,V1) & decision(N2,R2,V2)) -> V1 = V2
+
+invariant [100] forall R1:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. one_a(R1) | ~decision(N1,R1,V1)
+invariant [101] forall R1:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. one_a(R1) | ~vote(N1,R1,V1)
+invariant [102] forall R1:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. one_a(R1) | ~one_b(N1,R1)
+invariant [103] forall R1:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. ~vote(N1,R1,V1) | ~none=R1
+invariant [104] forall R1:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. one_a(R1) | ~proposal(R1,V1)
+invariant [105] forall R1:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. ~decision(N1,R1,V1) | ~none=R1
+invariant [106] forall R1:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. ~proposal(R1,V1) | ~none=R1
+invariant [107] forall R1:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. ~one_b(N1,R1) | ~none=R1
+invariant [108] forall R1:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. ~one_a(R1) | ~none=R1
+invariant [109] forall R1:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. proposal(R1,V1) | ~vote(N1,R1,V1)
+invariant [110] forall R1:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. proposal(R1,V1) | ~decision(N1,R1,V1)
+invariant [300] forall R1:round. forall V1:value, V2:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. V1 ~= V2 -> ~proposal(R1,V1) | ~proposal(R1,V2)
+invariant [400] forall R1:round. forall V1:value, V2:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. V1 ~= V2 & N1 ~= N2 -> ~vote(N1,R1,V1) | ~vote(N2,R1,V2)
+invariant [401] forall R1:round. forall V1:value, V2:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. V1 ~= V2 & N1 ~= N2 -> ~vote(N1,R1,V1) | ~decision(N2,R1,V2)
+invariant [402] forall R1:round. forall V1:value, V2:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. V1 ~= V2 & N1 ~= N2 -> ~decision(N1,R1,V1) | ~decision(N2,R1,V2)
+invariant [500] forall R1:round, R2:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. ~le(R2, R1) -> left_rnd(N1,R1) | ~left_rnd(N1,R2)
+invariant [501] forall R1:round, R2:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. ~le(R2, R1) -> left_rnd(N1,R1) | ~one_b(N1,R2)
+invariant [502] forall R1:round, R2:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. ~le(R2, R1) -> ~none=R1 | ~none=R2
+invariant [503] forall R1:round, R2:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. ~le(R2, R1) -> none=R1 | none=R2 | ~left_rnd(N1,R2)
+invariant [600] forall R1:round, R2:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> none=R2 | ~one_b(N1,R1) | ~left_rnd(N2,R2)
+invariant [601] forall R1:round, R2:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> none=R2 | ~left_rnd(N2,R2) | ~vote(N1,R1,V1)
+invariant [602] forall R1:round, R2:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> none=R2 | ~left_rnd(N2,R2) | ~decision(N1,R1,V1)
+invariant [603] forall R1:round, R2:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> none=R1 | ~one_b(N1,R2) | ~left_rnd(N2,R2)
+invariant [604] forall R1:round, R2:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> none=R1 | ~left_rnd(N2,R2) | ~vote(N1,R2,V1)
+invariant [605] forall R1:round, R2:round. forall V1:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> none=R1 | ~left_rnd(N2,R2) | ~decision(N1,R2,V1)
+invariant [700] forall R1:round, R2:round. forall V1:value, V2:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. ~le(R2, R1) & V1 ~= V2 -> ~proposal(R2,V1) | ~decision(N1,R1,V2)
+invariant [701] forall R1:round, R2:round. forall V1:value, V2:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node. ~le(R2, R1) & V1 ~= V2 -> ~left_rnd(N1,R2) | ~proposal(R1,V2) | ~proposal(R2,V1)
+invariant [800] forall R1:round, R2:round. forall V1:value, V2:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. ~le(R2, R1) & V1 ~= V2 & N1 ~= N2 -> ~vote(N1,R2,V1) | ~decision(N2,R1,V2)
+invariant [801] forall R1:round, R2:round. forall V1:value, V2:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. ~le(R2, R1) & V1 ~= V2 & N1 ~= N2 -> ~decision(N1,R1,V1) | ~decision(N2,R2,V2)
+invariant [802] forall R1:round, R2:round. forall V1:value, V2:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. ~le(R2, R1) & V1 ~= V2 & N1 ~= N2 -> ~left_rnd(N1,R2) | ~proposal(R1,V1) | ~decision(N2,R2,V2)
+invariant [803] forall R1:round, R2:round. forall V1:value, V2:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. ~le(R2, R1) & V1 ~= V2 & N1 ~= N2 -> ~left_rnd(N1,R2) | ~proposal(R1,V1) | ~vote(N2,R2,V2)
+invariant [804] forall R1:round, R2:round. forall V1:value, V2:value. forall QUORUM_11:quorum_1. forall QUORUM_21:quorum_2. forall N1:node, N2:node. ~le(R2, R1) & V1 ~= V2 & N1 ~= N2 -> ~left_rnd(N1,R2) | ~proposal(R2,V1) | ~vote(N2,R1,V2)

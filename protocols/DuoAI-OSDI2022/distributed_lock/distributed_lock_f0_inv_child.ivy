@@ -1,0 +1,128 @@
+#lang ivy1.7
+
+#
+# An Ivy model of the toy lock example from https://github.com/Microsoft/Ironclad/blob/master/ironfleet/src/Dafny/Distributed/Protocol/Lock/Node.i.dfy
+#
+# For a description of the protocol, see the IronFleet paper
+# (https://www.microsoft.com/en-us/research/wp-content/uploads/2015/10/ironfleet.pdf),
+# Figure 4
+#
+
+# A total order helper module
+module total_order(r) = {
+    axiom r(X,X)                        # Reflexivity
+    axiom r(X, Y) & r(Y, Z) -> r(X, Z)  # Transitivity
+    axiom r(X, Y) & r(Y, X) -> X = Y    # Anti-symmetry
+    axiom r(X, Y) | r(Y, X)             # Totality
+}
+
+################################################################################
+#
+# Types, relations and functions describing state of the network
+#
+################################################################################
+
+type node
+type epoch
+
+# epochs are totally ordered with a least element called zero
+relation le(X:epoch, Y:epoch)
+instantiate total_order(le)
+individual zero:epoch
+axiom le(zero, X)
+# individual maxint:epoch
+# axiom le(X, maxint)
+function ep(N:node) : epoch # ep(n) is the current epoch of node n
+
+relation held(N:node) # held(n) is true iff the lock is currently held by node n
+
+# transfer messages
+relation transfer(E:epoch, N:node)  # the node is the message destination
+
+# locked messages
+relation locked(E:epoch, N:node)  # the node is the message source
+
+################################################################################
+#
+# Protocol description
+#
+################################################################################
+individual first:node
+individual e1:epoch
+axiom e1 ~= zero
+# axiom E ~= zero -> le(e1, E)
+after init {
+    # initially exactly one node holds the lock, and everyone has epoch zero
+    held(X) := X=first;
+    ep(N) := zero;
+    ep(first) := e1;
+    transfer(E, N) := false;
+    locked(E, N) := false;
+}
+
+action grant(n1:node, n2:node, e:epoch) = {
+    # release the lock and send a transfer message
+    require held(n1);
+    require ~le(e, ep(n1));   # jump to some strictly higher epoch
+    transfer(e, n2) := true;
+    held(n1) := false;
+}
+
+action accept(n:node, e:epoch) = {
+    # receive a transfer message and take the lock, sending a locked message
+    require transfer(e,n);
+    if ~le(e, ep(n)) {
+        held(n) := true;
+        ep(n) := e;
+        locked(e, n) := true;
+    };
+}
+
+export grant
+export accept
+
+# the safety property
+invariant [1000000] locked(E, N1) & locked(E, N2) -> N1 = N2
+
+invariant [100] forall N1:node. forall E1:epoch. ~zero=E1 | ~e1=E1
+invariant [101] forall N1:node. forall E1:epoch. le(E1,ep(N1)) | ~first=N1 | ~e1=E1
+invariant [102] forall N1:node. forall E1:epoch. ~locked(E1,N1) | ~zero=E1
+invariant [103] forall N1:node. forall E1:epoch. ~transfer(E1,N1) | ~zero=E1
+invariant [104] forall N1:node. forall E1:epoch. le(E1,ep(N1)) | ~zero=E1
+invariant [105] forall N1:node. forall E1:epoch. ~transfer(E1,N1) | ~e1=E1
+invariant [106] forall N1:node. forall E1:epoch. le(E1,ep(N1)) | ~locked(E1,N1)
+invariant [107] forall N1:node. forall E1:epoch. transfer(E1,N1) | ~locked(E1,N1)
+invariant [108] forall N1:node. forall E1:epoch. le(E1,ep(N1)) | ~held(N1) | ~e1=E1
+invariant [109] forall N1:node. forall E1:epoch. locked(E1,N1) | ~transfer(E1,N1) | ~le(E1,ep(N1))
+invariant [110] forall N1:node. forall E1:epoch. locked(E1,N1) | ~held(N1) | ~transfer(E1,N1)
+invariant [111] forall N1:node. forall E1:epoch. ~locked(E1,N1) | ~e1=E1
+invariant [112] forall N1:node. forall E1:epoch. le(E1,ep(N1)) | ~held(N1) | ~transfer(E1,N1)
+invariant [200] forall N1:node. forall E1:epoch, E2:epoch. ~le(E2, E1) -> ~zero=E2
+invariant [201] forall N1:node. forall E1:epoch, E2:epoch. ~le(E2, E1) -> ~transfer(E1,N1) | ~e1=E2
+invariant [202] forall N1:node. forall E1:epoch, E2:epoch. ~le(E2, E1) -> le(E1,ep(N1)) | ~first=N1 | ~e1=E2
+invariant [203] forall N1:node. forall E1:epoch, E2:epoch. ~le(E2, E1) -> le(E1,ep(N1)) | ~held(N1) | ~e1=E2
+invariant [204] forall N1:node. forall E1:epoch, E2:epoch. ~le(E2, E1) -> le(E1,ep(N1)) | ~le(E2,ep(N1))
+invariant [205] forall N1:node. forall E1:epoch, E2:epoch. ~le(E2, E1) -> locked(E1,N1) | ~transfer(E1,N1) | ~le(E2,ep(N1))
+invariant [206] forall N1:node. forall E1:epoch, E2:epoch. ~le(E2, E1) -> ~e1=E1 | ~e1=E2
+invariant [207] forall N1:node. forall E1:epoch, E2:epoch. ~le(E2, E1) -> locked(E1,N1) | ~transfer(E1,N1) | ~transfer(E2,N1)
+invariant [208] forall N1:node. forall E1:epoch, E2:epoch. ~le(E2, E1) -> le(E1,ep(N1)) | ~held(N1) | ~transfer(E2,N1)
+invariant [300] forall N1:node, N2:node. forall E1:epoch. N1 ~= N2 -> le(E1,ep(N1)) | le(ep(N1),ep(N2)) | ~le(E1,ep(N2))
+invariant [301] forall N1:node, N2:node. forall E1:epoch. N1 ~= N2 -> locked(E1,N1) | ~held(N2) | ~transfer(E1,N1)
+invariant [302] forall N1:node, N2:node. forall E1:epoch. N1 ~= N2 -> locked(E1,N1) | ~transfer(E1,N1) | ~le(E1,ep(N2))
+invariant [303] forall N1:node, N2:node. forall E1:epoch. N1 ~= N2 -> ~first=N1 | ~first=N2
+invariant [304] forall N1:node, N2:node. forall E1:epoch. N1 ~= N2 -> ~held(N1) | ~le(ep(N1),ep(N2))
+invariant [305] forall N1:node, N2:node. forall E1:epoch. N1 ~= N2 -> le(E1,ep(N1)) | ~le(ep(N2),ep(N1)) | ~le(E1,ep(N2))
+invariant [306] forall N1:node, N2:node. forall E1:epoch. N1 ~= N2 -> le(E1,ep(N1)) | le(ep(N1),ep(N2)) | ~e1=E1
+invariant [307] forall N1:node, N2:node. forall E1:epoch. N1 ~= N2 -> ~transfer(E1,N1) | ~transfer(E1,N2)
+invariant [308] forall N1:node, N2:node. forall E1:epoch. N1 ~= N2 -> le(ep(N1),ep(N2)) | ~held(N2)
+invariant [309] forall N1:node, N2:node. forall E1:epoch. N1 ~= N2 -> le(ep(N1),ep(N2)) | le(ep(N2),ep(N1))
+invariant [310] forall N1:node, N2:node. forall E1:epoch. N1 ~= N2 -> le(E1,ep(N1)) | ~held(N1) | ~transfer(E1,N2)
+invariant [311] forall N1:node, N2:node. forall E1:epoch. N1 ~= N2 -> ~le(ep(N1),ep(N2)) | ~le(ep(N2),ep(N1)) | ~first=N2
+invariant [400] forall N1:node, N2:node. forall E1:epoch, E2:epoch. N1 ~= N2 & ~le(E2, E1) -> ~le(ep(N1),ep(N2)) | ~le(ep(N2),ep(N1)) | ~le(E2,ep(N2))
+invariant [401] forall N1:node, N2:node. forall E1:epoch, E2:epoch. N1 ~= N2 & ~le(E2, E1) -> le(E1,ep(N1)) | ~transfer(E2,N1) | ~le(E2,ep(N2))
+invariant [402] forall N1:node, N2:node. forall E1:epoch, E2:epoch. N1 ~= N2 & ~le(E2, E1) -> locked(E1,N1) | ~transfer(E1,N1) | ~le(E2,ep(N2))
+invariant [403] forall N1:node, N2:node. forall E1:epoch, E2:epoch. N1 ~= N2 & ~le(E2, E1) -> locked(E1,N1) | ~transfer(E1,N1) | ~transfer(E2,N2)
+invariant [404] forall N1:node, N2:node. forall E1:epoch, E2:epoch. N1 ~= N2 & ~le(E2, E1) -> le(ep(N2),ep(N1)) | le(E1,ep(N2)) | ~e1=E2
+invariant [405] forall N1:node, N2:node. forall E1:epoch, E2:epoch. N1 ~= N2 & ~le(E2, E1) -> le(E1,ep(N2)) | ~le(E2,ep(N1)) | ~le(ep(N1),ep(N2))
+invariant [406] forall N1:node, N2:node. forall E1:epoch, E2:epoch. N1 ~= N2 & ~le(E2, E1) -> le(E1,ep(N2)) | ~held(N1) | ~transfer(E2,N2)
+invariant [407] forall N1:node, N2:node. forall E1:epoch, E2:epoch. N1 ~= N2 & ~le(E2, E1) -> le(E1,ep(N2)) | ~held(N2) | ~transfer(E2,N1)

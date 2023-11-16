@@ -1,0 +1,313 @@
+#lang ivy1.7
+
+# from Paxos Made EPR
+
+################################################################################
+#
+# Modules that should probably come from a standard library
+#
+################################################################################
+
+################################################################################
+#
+# Module for axiomatizing a total order
+#
+################################################################################
+
+module total_order(r) = {
+    axiom r(X,X)                        # Reflexivity
+    axiom r(X, Y) & r(Y, Z) -> r(X, Z)  # Transitivity
+    axiom r(X, Y) & r(Y, X) -> X = Y    # Anti-symmetry
+    axiom r(X, Y) | r(Y, X)             # Totality
+}
+
+
+################################################################################
+#
+# Types, relations and functions describing state of the network
+#
+################################################################################
+
+type votemap
+type inst
+type round
+type value
+type quorum
+type node
+
+individual none: round
+relation le(X:round, Y:round)
+instantiate total_order(le)
+
+relation member(N:node, Q:quorum)
+axiom forall Q1:quorum, Q2:quorum. exists N:node. member(N, Q1) & member(N, Q2)
+
+relation one_a(R:round)
+relation one_b_msg(N:node, R1:round, M:votemap)
+relation left_round(N:node, R:round)
+relation joined_round(N:node, R:round)
+relation proposal(I:inst, R:round, V:value) # 2a
+relation active(R:round)  # round R has received a quorum of 1b and can now propose new values
+relation vote(N:node, I:inst, R:round, V:value) # 2b
+relation decision(N:node, I:inst, R:round, V:value) # got 2b from a quorum
+function maxr(M:votemap,I:inst) : round
+function maxv(M:votemap,I:inst) : value
+
+after init {
+    one_a(R) := false;
+    one_b_msg(N,R1,M) := false;
+    left_round(N,R) := false;
+    joined_round(N,R) := false;
+    proposal(I,R,V) := false;
+    vote(N,I,R,V) := false;
+    decision(N,I,R,V) := false;
+    active(R) := false;
+}
+
+
+action send_1a(r:round) = {
+    # a proposer selects a round and sends a message asking nodes to join the round
+    require r ~= none;
+    one_a(r) := true
+}
+
+
+action join_round(n:node, r:round, m:votemap) = {
+    # receive 1a and answer with 1b
+    require r ~= none;
+    require one_a(r);
+    require ~left_round(n,r);
+
+    # find the maximal vote in a round less than r, for all instances
+    require forall I:inst. (
+        ( maxr(m,I) = none & forall R,V. ~(vote(n,I,R,V) & ~le(r,R)) ) |
+        ( vote(n,I,maxr(m,I),maxv(m,I)) & ~le(r,maxr(m,I)) &
+          forall R,V. vote(n,I,R,V) & ~le(r,R) -> le(R,maxr(m,I)) )
+    );
+    # send the 1b message
+    one_b_msg(n,r,m) := true;
+    # update code:
+    left_round(n,R) := left_round(n,R) | ~le(r,R);
+    joined_round(n,r) := true
+}
+
+action receive_join_acks(r:round, q:quorum, m:votemap) = {
+    # receive a quorum of 1b's, activate round and propose for instances that have choosable values at lower rounds
+    require r ~= none;
+    require ~active(r); # this happens only once
+    require forall N:node. member(N, q) -> joined_round(N,r);
+
+    # find the maximal vote in the quorum for each instance, according to votes themselves
+    require forall I:inst. (
+        ( maxr(m,I) = none &
+          forall N,R,V. ~(member(N, q) & ~le(r,R) & vote(N,I,R,V)) ) |
+        ( (exists N,R,V.  member(N, q) & ~le(r,R) & vote(N,I,R,V) & R = maxr(m,I) & V = maxv(m,I)) &
+          (forall N,R,V.  member(N, q) & ~le(r,R) & vote(N,I,R,V) -> le(R,maxr(m,I))) )
+    );
+    # activate round
+    active(r) := true;
+    # propose all choosable values
+    proposal(I, r, V) := proposal(I, r, V) | (maxr(m,I) ~= none & V = maxv(m,I))
+}
+
+
+action propose(r:round, i:inst, v:value) = {
+    # propose a new arbitrary value an available instance in an active round
+    require r ~= none;
+    require active(r);
+    require ~proposal(i, r, V);
+    proposal(i, r, v) := true
+}
+
+
+action cast_vote(n:node, v:value, r:round, i:inst) = {
+    # receive a 2a and send 2b
+    require r ~= none;
+    require ~left_round(n,r);
+    require proposal(i, r, v);
+    vote(n, i, r, v) := true
+}
+
+
+action decide(n:node, r:round, v:value, q:quorum, i:inst) = {
+    # get 2b from a quorum
+    require r ~= none;
+    require member(N, q) -> vote(N, i, r, v);
+    decision(n, i, r, v) := true
+}
+
+
+export send_1a
+export join_round
+export receive_join_acks
+export propose
+export cast_vote
+export decide
+
+
+# safety property:
+invariant [1000000] decision(N1,I,R1,V1) & decision(N2,I,R2,V2) -> V1 = V2
+
+invariant [100] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. active(R1) | ~decision(N1,I1,R1,VA1)
+invariant [101] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. joined_round(N1,R1) | ~one_b_msg(N1,R1,VO1)
+invariant [102] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. one_a(R1) | ~one_b_msg(N1,R1,VO1)
+invariant [103] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. active(R1) | ~vote(N1,I1,R1,VA1)
+invariant [104] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. active(R1) | ~proposal(I1,R1,VA1)
+invariant [105] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~decision(N1,I1,R1,VA1) | ~none=R1
+invariant [106] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. one_a(R1) | ~joined_round(N1,R1)
+invariant [107] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. one_a(R1) | ~proposal(I1,R1,VA1)
+invariant [108] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. proposal(I1,R1,VA1) | ~vote(N1,I1,R1,VA1)
+invariant [109] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~vote(N1,I1,R1,VA1) | ~none=R1
+invariant [110] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. one_a(R1) | ~active(R1)
+invariant [111] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~active(R1) | ~none=R1
+invariant [112] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. proposal(I1,R1,VA1) | ~decision(N1,I1,R1,VA1)
+invariant [113] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~joined_round(N1,R1) | ~none=R1
+invariant [114] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. one_a(R1) | ~vote(N1,I1,R1,VA1)
+invariant [115] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. one_a(R1) | ~decision(N1,I1,R1,VA1)
+invariant [116] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~one_a(R1) | ~none=R1
+invariant [200] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R1) | ~left_round(N1,R1) | ~vote(N1,I1,R1,VA1)
+invariant [300] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node. VA1 ~= VA2 -> ~proposal(I1,R1,VA1) | ~proposal(I1,R1,VA2)
+invariant [400] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. VA1 ~= VA2 & N1 ~= N2 -> ~vote(N1,I1,R1,VA1) | ~vote(N2,I1,R1,VA2)
+invariant [401] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. VA1 ~= VA2 & N1 ~= N2 -> ~vote(N1,I1,R1,VA1) | ~decision(N2,I1,R1,VA2)
+invariant [402] forall VO1:votemap. forall I1:inst. forall R1:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. VA1 ~= VA2 & N1 ~= N2 -> ~decision(N1,I1,R1,VA1) | ~decision(N2,I1,R1,VA2)
+invariant [500] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> joined_round(N1,R2) | vote(N1,I1,R1,VA1) | ~decision(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [501] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> left_round(N1,R1) | joined_round(N1,R1) | ~decision(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [502] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> left_round(N1,R1) | joined_round(N1,R1) | ~vote(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [503] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> left_round(N1,R1) | vote(N1,I1,R1,VA1) | ~vote(N1,I1,R2,VA1) | ~decision(N1,I1,R1,VA1)
+invariant [504] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> none=R1 | none=R2 | ~left_round(N1,R2)
+invariant [505] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> left_round(N1,R1) | ~joined_round(N1,R2)
+invariant [506] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> joined_round(N1,R2) | none=R1 | none=R2 | ~left_round(N1,R1)
+invariant [507] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> left_round(N1,R1) | vote(N1,I1,R1,VA1) | ~decision(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [508] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> ~one_b_msg(N1,R1,VO1) | ~one_b_msg(N1,R2,VO1) | ~vote(N1,I1,R1,VA1)
+invariant [509] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> joined_round(N1,R2) | vote(N1,I1,R1,VA1) | ~vote(N1,I1,R2,VA1) | ~decision(N1,I1,R1,VA1)
+invariant [510] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> proposal(I1,R2,VA1) | ~active(R2) | ~decision(N1,I1,R1,VA1)
+invariant [511] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> ~none=R1 | ~none=R2
+invariant [512] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> left_round(N1,R1) | ~left_round(N1,R2)
+invariant [513] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> joined_round(N1,R1) | joined_round(N1,R2) | ~vote(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [514] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) -> joined_round(N1,R1) | joined_round(N1,R2) | ~decision(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [600] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N2,R2) | vote(N2,I1,R1,VA1) | ~decision(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [601] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> none=R1 | ~left_round(N1,R2) | ~decision(N2,I1,R2,VA1)
+invariant [602] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N2,R2) | vote(N2,I1,R1,VA1) | ~decision(N1,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [603] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> none=R2 | ~left_round(N1,R2) | ~joined_round(N2,R1)
+invariant [604] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> none=R1 | ~left_round(N1,R2) | ~joined_round(N2,R2)
+invariant [605] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | vote(N2,I1,R1,VA1) | ~decision(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [606] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N2,R1) | joined_round(N2,R2) | ~vote(N1,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [607] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | vote(N2,I1,R2,VA1) | ~vote(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [608] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | vote(N2,I1,R2,VA1) | ~decision(N1,I1,R2,VA1) | ~decision(N2,I1,R1,VA1)
+invariant [609] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R1) | ~decision(N2,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [610] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N2,R2) | vote(N2,I1,R2,VA1) | ~decision(N1,I1,R2,VA1) | ~decision(N2,I1,R1,VA1)
+invariant [611] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R2) | vote(N2,I1,R2,VA1) | ~decision(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [612] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> vote(N1,I1,R1,VA1) | vote(N2,I1,R2,VA1) | ~decision(N1,I1,R2,VA1) | ~decision(N2,I1,R1,VA1)
+invariant [613] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R2) | none=R2 | ~left_round(N1,R1) | ~joined_round(N2,R1)
+invariant [614] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> left_round(N1,R2) | none=R1 | ~left_round(N1,R1) | ~left_round(N2,R2)
+invariant [615] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R2) | none=R1 | ~left_round(N1,R1) | ~joined_round(N2,R2)
+invariant [616] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> vote(N2,I1,R1,VA1) | ~one_b_msg(N1,R2,VO1) | ~one_b_msg(N2,R2,VO1) | ~vote(N1,I1,R1,VA1)
+invariant [617] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R1) | ~decision(N1,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [618] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N2,R2) | vote(N2,I1,R1,VA1) | ~vote(N1,I1,R2,VA1) | ~decision(N2,I1,R1,VA1)
+invariant [619] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R2) | ~decision(N1,I1,R2,VA1) | ~decision(N2,I1,R1,VA1)
+invariant [620] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R2) | decision(N2,I1,R1,VA1) | ~decision(N1,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [621] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R2) | vote(N2,I1,R1,VA1) | ~vote(N2,I1,R2,VA1) | ~decision(N1,I1,R1,VA1)
+invariant [622] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R1) | ~left_round(N1,R2) | ~vote(N1,I1,R1,VA1)
+invariant [623] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R1) | ~vote(N1,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [624] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> left_round(N1,R2) | joined_round(N1,R2) | ~left_round(N1,R1) | ~left_round(N2,R2)
+invariant [625] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> none=R1 | ~left_round(N1,R2) | ~vote(N2,I1,R2,VA1)
+invariant [626] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N2,R2) | vote(N2,I1,R1,VA1) | ~vote(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [627] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N2,R2) | vote(N2,I1,R1,VA1) | ~vote(N1,I1,R2,VA1) | ~decision(N1,I1,R1,VA1)
+invariant [628] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R2) | none=R1 | ~left_round(N1,R1) | ~vote(N2,I1,R2,VA1)
+invariant [629] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> vote(N1,I1,R2,VA1) | vote(N2,I1,R2,VA1) | ~decision(N2,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [630] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R1) | ~vote(N2,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [631] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R2) | none=R2 | ~left_round(N1,R1) | ~decision(N2,I1,R1,VA1)
+invariant [632] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R2) | ~vote(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [633] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R2) | ~vote(N1,I1,R2,VA1) | ~decision(N1,I1,R1,VA1)
+invariant [634] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R2) | vote(N2,I1,R2,VA1) | ~left_round(N1,R2) | ~vote(N1,I1,R2,VA1)
+invariant [635] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> left_round(N2,R2) | joined_round(N2,R2) | ~left_round(N1,R2) | ~vote(N1,I1,R2,VA1)
+invariant [636] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> none=R2 | ~left_round(N1,R2) | ~decision(N2,I1,R1,VA1)
+invariant [637] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N2,R2) | vote(N2,I1,R1,VA1) | ~decision(N1,I1,R2,VA1) | ~decision(N2,I1,R1,VA1)
+invariant [638] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N2,R2) | vote(N2,I1,R1,VA1) | ~vote(N2,I1,R2,VA1) | ~decision(N1,I1,R1,VA1)
+invariant [639] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R2) | ~vote(N1,I1,R2,VA1) | ~decision(N2,I1,R1,VA1)
+invariant [640] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> left_round(N2,R1) | ~left_round(N1,R2) | ~vote(N1,I1,R2,VA1)
+invariant [641] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R2) | none=R1 | ~left_round(N1,R1) | ~decision(N2,I1,R2,VA1)
+invariant [642] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> none=R2 | ~left_round(N1,R2) | ~vote(N2,I1,R1,VA1)
+invariant [643] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> vote(N1,I1,R1,VA1) | vote(N2,I1,R1,VA1) | ~decision(N2,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [644] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> ~one_b_msg(N1,R1,VO1) | ~one_b_msg(N2,R2,VO1) | ~vote(N2,I1,R1,VA1)
+invariant [645] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R2) | none=R2 | ~left_round(N1,R1) | ~vote(N2,I1,R1,VA1)
+invariant [646] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R2) | ~decision(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [647] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R2) | vote(N2,I1,R1,VA1) | ~vote(N2,I1,R2,VA1) | ~decision(N2,I1,R1,VA1)
+invariant [648] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R2) | vote(N2,I1,R1,VA1) | ~decision(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [649] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | vote(N2,I1,R1,VA1) | ~decision(N1,I1,R2,VA1) | ~decision(N2,I1,R1,VA1)
+invariant [650] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R2) | ~vote(N1,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [651] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N2,R1) | joined_round(N2,R2) | ~decision(N1,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [652] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N2,R1) | joined_round(N2,R2) | ~vote(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [653] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R2) | ~decision(N2,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [654] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R1) | ~joined_round(N1,R2) | ~vote(N1,I1,R1,VA1)
+invariant [655] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R1) | ~vote(N1,I1,R1,VA1) | ~vote(N2,I1,R2,VA1)
+invariant [700] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) & VA1 ~= VA2 -> ~proposal(I1,R2,VA2) | ~decision(N1,I1,R1,VA1)
+invariant [701] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) & VA1 ~= VA2 -> ~left_round(N1,R2) | ~proposal(I1,R1,VA1) | ~proposal(I1,R2,VA2)
+invariant [702] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) & VA1 ~= VA2 -> joined_round(N1,R1) | vote(N1,I1,R2,VA1) | ~vote(N1,I1,R1,VA2) | ~decision(N1,I1,R2,VA1)
+invariant [703] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) & VA1 ~= VA2 -> joined_round(N1,R2) | vote(N1,I1,R1,VA1) | ~active(R2) | ~decision(N1,I1,R1,VA1)
+invariant [704] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) & VA1 ~= VA2 -> vote(N1,I1,R2,VA1) | ~left_round(N1,R1) | ~vote(N1,I1,R1,VA2) | ~decision(N1,I1,R2,VA1)
+invariant [705] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) & VA1 ~= VA2 -> joined_round(N1,R1) | vote(N1,I1,R2,VA1) | ~decision(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [706] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) & VA1 ~= VA2 -> joined_round(N1,R1) | ~left_round(N1,R1) | ~proposal(I1,R2,VA2) | ~vote(N1,I1,R1,VA1)
+invariant [707] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) & VA1 ~= VA2 -> joined_round(N1,R1) | ~left_round(N1,R2) | ~vote(N1,I1,R1,VA1) | ~decision(N1,I1,R1,VA1)
+invariant [708] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) & VA1 ~= VA2 -> joined_round(N1,R2) | ~left_round(N1,R1) | ~proposal(I1,R1,VA1) | ~proposal(I1,R2,VA2)
+invariant [709] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) & VA1 ~= VA2 -> joined_round(N1,R1) | ~member(N1,Q1) | ~vote(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA2)
+invariant [710] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node. ~le(R2, R1) & VA1 ~= VA2 -> joined_round(N1,R1) | ~vote(N1,I1,R1,VA1) | ~decision(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [800] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N2,R1) | ~left_round(N2,R1) | ~vote(N2,I1,R1,VA1) | ~decision(N1,I1,R2,VA2)
+invariant [801] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R2) | ~left_round(N2,R1) | ~proposal(I1,R2,VA2) | ~vote(N2,I1,R1,VA1)
+invariant [802] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | vote(N1,I1,R2,VA1) | ~decision(N1,I1,R2,VA1) | ~decision(N2,I1,R1,VA1)
+invariant [803] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | ~vote(N1,I1,R1,VA1) | ~vote(N2,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [804] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> ~decision(N1,I1,R1,VA1) | ~decision(N2,I1,R2,VA2)
+invariant [805] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | vote(N1,I1,R2,VA1) | ~vote(N1,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [806] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N2,R1) | ~member(N2,Q1) | ~vote(N2,I1,R1,VA1) | ~decision(N1,I1,R2,VA2)
+invariant [807] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> vote(N1,I1,R2,VA1) | decision(N2,I1,R1,VA1) | ~decision(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1)
+invariant [808] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> vote(N1,I1,R2,VA1) | ~left_round(N1,R1) | ~vote(N1,I1,R1,VA2) | ~decision(N2,I1,R2,VA1)
+invariant [809] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> left_round(N2,R1) | decision(N2,I1,R2,VA2) | ~left_round(N1,R2) | ~decision(N1,I1,R2,VA2)
+invariant [810] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N2,R1) | vote(N1,I1,R2,VA1) | ~vote(N2,I1,R1,VA2) | ~decision(N1,I1,R2,VA1)
+invariant [811] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> vote(N1,I1,R2,VA1) | ~left_round(N1,R1) | ~vote(N1,I1,R1,VA2) | ~vote(N2,I1,R2,VA1)
+invariant [812] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> ~vote(N1,I1,R2,VA1) | ~decision(N2,I1,R1,VA2)
+invariant [813] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> vote(N1,I1,R1,VA1) | vote(N2,I1,R1,VA1) | ~decision(N1,I1,R1,VA1) | ~decision(N2,I1,R2,VA1)
+invariant [814] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R1) | ~proposal(I1,R2,VA2) | ~vote(N1,I1,R1,VA1)
+invariant [815] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> member(N1,Q1) | joined_round(N2,R1) | ~vote(N2,I1,R1,VA1) | ~decision(N1,I1,R2,VA2)
+invariant [816] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R2) | ~vote(N1,I1,R1,VA1) | ~decision(N2,I1,R2,VA2)
+invariant [817] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> vote(N1,I1,R2,VA1) | ~left_round(N2,R1) | ~vote(N2,I1,R1,VA2) | ~decision(N1,I1,R2,VA1)
+invariant [818] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> ~one_b_msg(N1,R2,VO1) | ~one_b_msg(N2,R2,VO1) | ~proposal(I1,R2,VA2) | ~vote(N1,I1,R1,VA1)
+invariant [819] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> member(N1,Q1) | joined_round(N2,R1) | ~vote(N2,I1,R1,VA1) | ~decision(N2,I1,R2,VA2)
+invariant [820] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | ~left_round(N2,R1) | ~vote(N1,I1,R2,VA1) | ~vote(N2,I1,R1,VA2)
+invariant [821] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> member(N1,Q1) | ~left_round(N2,R1) | ~vote(N2,I1,R1,VA1) | ~decision(N1,I1,R2,VA2)
+invariant [822] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | ~left_round(N1,R2) | ~vote(N1,I1,R1,VA1) | ~vote(N2,I1,R1,VA1)
+invariant [823] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> left_round(N1,R1) | vote(N1,I1,R2,VA1) | ~left_round(N2,R2) | ~decision(N1,I1,R2,VA1)
+invariant [824] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> member(N1,Q1) | joined_round(N2,R1) | ~vote(N1,I1,R2,VA1) | ~vote(N2,I1,R1,VA2)
+invariant [825] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> ~left_round(N2,R2) | ~proposal(I1,R1,VA2) | ~decision(N1,I1,R2,VA1)
+invariant [826] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N2,R2) | ~left_round(N2,R1) | ~proposal(I1,R1,VA2) | ~decision(N1,I1,R2,VA1)
+invariant [827] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | ~left_round(N2,R1) | ~vote(N2,I1,R1,VA1) | ~decision(N1,I1,R2,VA2)
+invariant [828] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | ~vote(N1,I1,R1,VA1) | ~vote(N2,I1,R1,VA1) | ~vote(N2,I1,R2,VA2)
+invariant [829] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> left_round(N1,R2) | joined_round(N1,R1) | ~left_round(N2,R2) | ~vote(N2,I1,R1,VA1)
+invariant [830] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N2,R2) | ~left_round(N2,R1) | ~proposal(I1,R1,VA2) | ~vote(N1,I1,R2,VA1)
+invariant [831] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N2,R2) | ~left_round(N2,R1) | ~proposal(I1,R2,VA2) | ~vote(N1,I1,R1,VA1)
+invariant [832] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | ~vote(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA1) | ~decision(N2,I1,R1,VA1)
+invariant [833] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N2,R1) | ~left_round(N2,R1) | ~vote(N1,I1,R2,VA1) | ~vote(N2,I1,R1,VA2)
+invariant [834] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | decision(N2,I1,R2,VA2) | ~vote(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA2)
+invariant [835] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R2) | decision(N2,I1,R1,VA2) | ~decision(N1,I1,R1,VA2) | ~decision(N1,I1,R2,VA2)
+invariant [836] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> decision(N2,I1,R2,VA2) | ~left_round(N2,R1) | ~vote(N2,I1,R1,VA1) | ~decision(N1,I1,R2,VA2)
+invariant [837] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> left_round(N1,R1) | ~left_round(N2,R2) | ~joined_round(N2,R2) | ~decision(N1,I1,R2,VA2)
+invariant [838] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N1,R2) | ~vote(N2,I1,R1,VA1) | ~decision(N2,I1,R2,VA2)
+invariant [839] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> left_round(N1,R1) | vote(N1,I1,R2,VA1) | ~left_round(N2,R2) | ~decision(N2,I1,R2,VA1)
+invariant [840] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N1,R2) | ~vote(N2,I1,R1,VA1) | ~vote(N2,I1,R2,VA2)
+invariant [841] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R1) | ~proposal(I1,R2,VA2) | ~vote(N1,I1,R1,VA2)
+invariant [842] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R2) | ~vote(N1,I1,R1,VA1) | ~decision(N1,I1,R2,VA2)
+invariant [843] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N2,R1) | vote(N1,I1,R2,VA1) | ~vote(N1,I1,R1,VA2) | ~decision(N1,I1,R2,VA1)
+invariant [844] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R2) | ~vote(N1,I1,R1,VA1) | ~vote(N2,I1,R2,VA2)
+invariant [845] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N1,R2) | ~vote(N2,I1,R1,VA1) | ~decision(N1,I1,R2,VA2)
+invariant [846] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | ~left_round(N2,R2) | ~vote(N1,I1,R1,VA1) | ~vote(N2,I1,R1,VA1)
+invariant [847] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N2,R1) | vote(N1,I1,R2,VA1) | ~vote(N2,I1,R1,VA2) | ~decision(N2,I1,R2,VA1)
+invariant [848] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | ~left_round(N2,R2) | ~vote(N1,I1,R1,VA1) | ~decision(N2,I1,R1,VA1)
+invariant [849] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> ~left_round(N2,R2) | ~proposal(I1,R1,VA2) | ~vote(N1,I1,R2,VA1)
+invariant [850] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> ~left_round(N2,R2) | ~proposal(I1,R2,VA2) | ~vote(N1,I1,R1,VA1)
+invariant [851] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R2) | ~vote(N2,I1,R2,VA2) | ~decision(N1,I1,R1,VA2)
+invariant [852] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | ~left_round(N1,R2) | ~vote(N1,I1,R1,VA1) | ~decision(N2,I1,R1,VA1)
+invariant [853] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> left_round(N1,R1) | ~left_round(N2,R2) | ~joined_round(N2,R2) | ~decision(N2,I1,R2,VA2)
+invariant [854] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | joined_round(N2,R2) | ~active(R2) | ~decision(N2,I1,R1,VA2)
+invariant [855] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | ~vote(N1,I1,R1,VA1) | ~vote(N2,I1,R1,VA1) | ~decision(N2,I1,R2,VA2)
+invariant [856] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N2,R1) | vote(N1,I1,R2,VA1) | ~vote(N1,I1,R1,VA2) | ~decision(N2,I1,R2,VA1)
+invariant [857] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> ~left_round(N2,R1) | ~proposal(I1,R2,VA2) | ~vote(N1,I1,R1,VA1) | ~vote(N2,I1,R1,VA1)
+invariant [858] forall VO1:votemap. forall I1:inst. forall R1:round, R2:round. forall VA1:value, VA2:value. forall Q1:quorum. forall N1:node, N2:node. ~le(R2, R1) & VA1 ~= VA2 & N1 ~= N2 -> joined_round(N1,R1) | ~vote(N1,I1,R1,VA1) | ~vote(N2,I1,R1,VA1) | ~decision(N1,I1,R2,VA2)

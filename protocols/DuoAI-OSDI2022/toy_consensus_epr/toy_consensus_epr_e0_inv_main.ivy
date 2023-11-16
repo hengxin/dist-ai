@@ -1,0 +1,46 @@
+#lang ivy1.7
+
+type value
+type quorum
+type node
+
+relation member(N:node, Q:quorum)
+axiom forall Q1, Q2. exists N. member(N, Q1) & member(N, Q2)
+
+relation voted(N:node)
+relation vote(N:node, V:value)
+relation decided(V:value)
+
+after init {
+    voted(N) := false;
+    vote(N, V) := false;
+    decided(V) := false;
+}
+
+action cast_vote(n: node, v: value) = {
+    assume ~voted(n);
+    vote(n, v) := true;
+    voted(n) := true;
+}
+
+action decide(v: value, q: quorum) = {
+    assume forall N . member(N,q) -> vote(N,v);
+    decided(v) := true;
+}
+
+export cast_vote
+export decide
+
+invariant [1000000] decided(V1) & decided(V2) -> V1 = V2
+
+invariant [100] forall V1:value. forall Q1:quorum. forall N1:node. voted(N1) | ~vote(N1,V1)
+invariant [101] forall V1:value. forall Q1:quorum. exists N1:node. (member(N1,Q1) & voted(N1)) | (member(N1,Q1) & ~vote(N1,V1))
+invariant [102] forall V1:value. forall Q1:quorum. exists N1:node. (member(N1,Q1) & vote(N1,V1)) | ~decided(V1)
+invariant [103] forall V1:value. exists Q1:quorum. forall N1:node. vote(N1,V1) | ~member(N1,Q1) | ~decided(V1)
+invariant [104] exists V1:value. forall Q1:quorum. forall N1:node. voted(N1) | ~voted(N1) | ~decided(V1)
+invariant [105] exists V1:value. forall Q1:quorum. forall N1:node. vote(N1,V1) | ~vote(N1,V1) | ~decided(V1)
+invariant [300] forall V1:value, V2:value. forall Q1:quorum. forall N1:node. V1 ~= V2 -> ~decided(V1) | ~decided(V2)
+invariant [301] forall V1:value, V2:value. forall Q1:quorum. forall N1:node. V1 ~= V2 -> ~vote(N1,V1) | ~vote(N1,V2)
+invariant [302] forall V1:value, V2:value. forall Q1:quorum. exists N1:node. V1 ~= V2 -> (member(N1,Q1) & ~vote(N1,V1)) | (member(N1,Q1) & ~vote(N1,V2))
+invariant [303] forall V1:value, V2:value. forall Q1:quorum. exists N1:node. V1 ~= V2 -> (member(N1,Q1) & voted(N1) & ~vote(N1,V2)) | ~decided(V1)
+invariant [304] forall V1:value, V2:value. exists Q1:quorum. forall N1:node. V1 ~= V2 -> ~member(N1,Q1) | ~vote(N1,V1) | ~decided(V2)
