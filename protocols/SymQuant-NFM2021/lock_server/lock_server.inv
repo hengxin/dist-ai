@@ -1,0 +1,4 @@
+### Proof certificate: #2
+invariant [ic3po_prop1]	(forall S, C1, C2 . ((link(C1, S) & link(C2, S)) -> (C1 = C2)))
+invariant [ic3po_global1_1]	(forall S1, C1 . (semaphore(S1) -> ~link(C1, S1)))
+###

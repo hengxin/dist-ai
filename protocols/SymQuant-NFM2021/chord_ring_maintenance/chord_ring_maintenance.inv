@@ -1,0 +1,12 @@
+### Proof certificate: #10
+invariant [ic3po_prop1]	(forall N . ~error(N))
+invariant [ic3po_other3]	(forall N2, N1 . (ring.btw(N2, org, N1) -> ~s1(N2, N1)))
+invariant [ic3po_global1_1]	a(org)
+invariant [ic3po_global1_2]	(forall N1 . (a(N1) -> in_s1(N1)))
+invariant [ic3po_other2]	(forall N2, N1 . (s1(N2, N1) -> ((N2 = org) | a(N1) | in_s2(N2))))
+invariant [ic3po_global1_3]	reach(org)
+invariant [ic3po_global1_5]	(forall N3, N2, N1 . ((s1(N3, N2) & s1(N3, N1)) -> (N2 = N1)))
+invariant [ic3po_other4]	(forall N3, N2, N1 . ((s1(N3, N1) & s2(N3, N2)) -> ((N3 = org) | a(N2) | a(N1))))
+invariant [ic3po_other5]	(forall N2, N1 . ((s2(N2, N2) & s1(N2, N1) & in_s2(N2)) -> ((N2 = org) | (N1 = org) | (N2 = N1))))
+invariant [ic3po_other6]	(forall N1, N3, N2 . ((ring.btw(N3, N2, org) & s1(N1, N2) & s2(N1, N3)) -> ((N3 = N1) | (N3 = org) | (org = N1))))
+###

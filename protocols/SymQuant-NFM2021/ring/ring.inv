@@ -1,0 +1,5 @@
+### Proof certificate: #3
+invariant [ic3po_prop1]	(forall L, N . (leader(L) -> le(N, L)))
+invariant [ic3po_other1]	(forall N2, N1 . (pending(N1, N1) -> le(N2, N1)))
+invariant [ic3po_global1_2]	(forall N3, N1, N2 . ((btw(N1, N2, N3) & pending(N2, N1)) -> le(N3, N2)))
+###

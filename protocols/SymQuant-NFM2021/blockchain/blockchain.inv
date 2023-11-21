@@ -1,0 +1,6 @@
+### Proof certificate: #4
+invariant [ic3po_prop2]	(forall N1, T, B, N2 . ((honest(N2) & honest(N1)) -> ((block_confirmed(N2, B, T) & block_confirmed(N1, B, T)) | (~block_confirmed(N2, B, T) & ~block_confirmed(N1, B, T)))))
+invariant [ic3po_prop3]	(forall N, T1, T2, TR, N1 . ((honest(N) & leader(N, T2) & transaction_time(TR, T1) & le(T1, T2) & broadcasted(N) & honest(N1)) -> transaction_confirmed(TR, N1)))
+invariant [ic3po_prop1]	(forall N1, TR, N2 . ((honest(N2) & honest(N1)) -> ((transaction_confirmed(TR, N2) & transaction_confirmed(TR, N1)) | (~transaction_confirmed(TR, N2) & ~transaction_confirmed(TR, N1)))))
+invariant [ic3po_global1_1]	(forall N1, T1, B1, T2 . ((broadcastable(N1, B1, T2) & honest(N1) & leader(N1, T1)) -> (T2 = T1)))
+###

@@ -1,0 +1,11 @@
+### Proof certificate: #9
+invariant [ic3po_prop1]	(forall N1, N2 . (held(N2) -> le(ep(N1), ep(N2))))
+invariant [ic3po_other15]	(forall N2, N1, E1, E2 . ((transfer(E1, N2) & transfer(E2, N1)) -> (le(E1, ep(N2)) | le(E2, E1))))
+invariant [ic3po_other11]	(forall N1, N2, E1 . ((transfer(E1, N2) & transfer(E1, N1)) -> (N1 = N2)))
+invariant [ic3po_other2]	(forall N1, N2 . (transfer(ep(N2), N1) -> (le(ep(N2), zero) | (N1 = N2))))
+invariant [ic3po_other1]	(forall N1, N2 . ((held(N2) & held(N1)) -> (N1 = N2)))
+invariant [ic3po_other14]	(forall N2, N1, E1, E2 . ((transfer(E1, N1) & locked(E2, N2)) -> (le(E1, ep(N1)) | le(E2, E1))))
+invariant [ic3po_other7]	(forall N2, N1, E1 . ((held(N2) & transfer(E1, N1)) -> le(E1, ep(N2))))
+invariant [ic3po_global1_3]	(forall N1 . (le(ep(N1), zero) | locked(ep(N1), N1)))
+invariant [ic3po_global1_5]	(forall N1, E1 . (locked(E1, N1) -> le(E1, ep(N1))))
+###

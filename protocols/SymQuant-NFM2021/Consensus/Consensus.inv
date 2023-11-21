@@ -1,0 +1,3 @@
+### Proof certificate: #1
+invariant [ic3po_prop1]	(forall V1, V2 . ((chosen(V1) & chosen(V2)) -> (V1 = V2)))
+###

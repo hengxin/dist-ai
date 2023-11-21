@@ -1,0 +1,4 @@
+### Proof certificate: #2
+invariant [ic3po_prop1]	((exists N, V, K . transfer_msg(N, K, V)) | (forall K . (exists N . owner(N, K))))
+invariant [ic3po_global1_1]	(forall K1 . (exists V1, N1 . (owner(N1, K1) | transfer_msg(N1, K1, V1))))
+###

@@ -1,0 +1,8 @@
+### Proof certificate: #6
+invariant [ic3po_prop1]	(forall N1, N2, R1, R2, V1, V2 . ((decision(N1, R1, V1) & decision(N2, R2, V2)) -> (V1 = V2)))
+invariant [ic3po_global1_6]	(forall V2, V1, R1 . ((proposal(R1, V1) & proposal(R1, V2)) -> (V2 = V1)))
+invariant [ic3po_global1_9_1]	(forall R2, N1, R1 . (one_b(N1, R2) -> (left_rnd(N1, R1) | le(R2, R1))))
+invariant [ic3po_global1_2]	(forall V1, N1, R1 . (decision(N1, R1, V1) -> chosenAt(R1, V1)))
+invariant [ic3po_global1_3]	(forall V1, N1, R1 . (vote(N1, R1, V1) -> proposal(R1, V1)))
+invariant [ic3po_other1]	(forall V1, R1 . (proposal(R1, V1) -> isSafeAtPaxos(R1, V1)))
+###

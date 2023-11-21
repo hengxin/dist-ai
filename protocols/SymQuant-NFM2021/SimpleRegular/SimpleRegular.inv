@@ -1,0 +1,4 @@
+### Proof certificate: #2
+invariant [ic3po_prop1]	((forall S . (pc(S) = done)) -> (exists I . (y(I) = one)))
+invariant [ic3po_global1_5]	(forall N1, V1 . (x(N1, V1) -> ((a1 = a2) | (a1 = pc(N1)) | (V1 = one) | (pc(N1) = a2))))
+###

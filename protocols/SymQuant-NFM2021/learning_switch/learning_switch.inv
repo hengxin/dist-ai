@@ -1,0 +1,9 @@
+### Proof certificate: #7
+invariant [ic3po_prop4]	(forall Z, T, X, Y . ((table(T, X, Y) & table(T, X, Z)) -> (table(T, Y, Z) | table(T, Z, Y))))
+invariant [ic3po_prop1]	(forall T, X . table(T, X, X))
+invariant [ic3po_prop3]	(forall Z, T, X, Y . ((table(T, X, Y) & table(T, Y, Z)) -> table(T, X, Z)))
+invariant [ic3po_prop2]	(forall T, X, Y . ((table(T, X, Y) & table(T, Y, X)) -> (X = Y)))
+invariant [ic3po_other1]	(forall N4, N2, N3, N1 . (pending(N4, N2, N1, N3) -> table(N4, N1, N4)))
+invariant [ic3po_global1_2]	(forall N2, N1 . (table(N2, N2, N1) -> (N2 = N1)))
+invariant [ic3po_other2]	(forall N2, N1, N3 . (table(N2, N1, N3) -> ((N1 = N3) | pending(N2, N1, N1, N2) | table(N2, N1, N2))))
+###

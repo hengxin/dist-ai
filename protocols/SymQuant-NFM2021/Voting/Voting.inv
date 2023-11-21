@@ -1,0 +1,5 @@
+### Proof certificate: #3
+invariant [ic3po_prop1]	(forall V1, V2 . ((chosen(V2) & chosen(V1)) -> (V2 = V1)))
+invariant [ic3po_global1_3]	(forall V1, A1, B1 . (votes(A1, B1, V1) -> isSafeAt(B1, V1)))
+invariant [ic3po_global1_5]	(forall V1, V2, A1, B1 . ((chosenAt(B1, V1) & votes(A1, B1, V2)) -> (V1 = V2)))
+###

@@ -1,0 +1,13 @@
+### Proof certificate: #11
+invariant [ic3po_prop1]	(forall E, N1, N2 . ((locked(E, N1) & locked(E, N2)) -> (N1 = N2)))
+invariant [ic3po_global1_1]	(forall E1, N1 . (locked(E1, N1) -> transfer_msg(E1, N1)))
+invariant [ic3po_other6]	(forall N2, E1, N1 . (gt(E1, N2) -> (held(N2) -> ~locked(E1, N1))))
+invariant [ic3po_other4]	(forall N2, N1 . ((held(N2) & transfer_msg(max, N1)) -> (N1 = N2)))
+invariant [ic3po_other9]	(forall N2, E1, E2, N1 . ((gt(E2, N2) & held(N2) & transfer_msg(E1, N1)) -> le(E1, E2)))
+invariant [ic3po_other5]	(forall N2, N1 . ((transfer_msg(max, N2) & transfer_msg(max, N1)) -> (N1 = N2)))
+invariant [ic3po_other10]	(forall N2, E1, E2, N1 . ((gt(E1, N2) & transfer_msg(E1, N2) & transfer_msg(E2, N1)) -> le(E2, E1)))
+invariant [ic3po_other7]	(forall N2, E1, N1 . (gt(E1, N2) -> (held(N1) -> ~transfer_msg(E1, N2))))
+invariant [ic3po_other3]	(forall N2, N1 . ((held(N1) & held(N2)) -> (N1 = N2)))
+invariant [ic3po_other8]	(forall E1, N1, N2 . (gt(E1, N1) -> (locked(E1, N2) -> ~transfer_msg(E1, N1))))
+invariant [ic3po_other11]	(forall E1, N1, N2 . ((gt(E1, N1) & gt(E1, N2) & transfer_msg(E1, N2) & transfer_msg(E1, N1)) -> (N1 = N2)))
+###

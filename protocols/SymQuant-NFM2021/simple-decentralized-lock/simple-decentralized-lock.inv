@@ -1,0 +1,6 @@
+### Proof certificate: #4
+invariant [ic3po_prop1]	(forall X, Y . (~(X = Y) -> (has_lock(X) -> ~has_lock(Y))))
+invariant [ic3po_other2]	(forall N1, N2, N3 . ((message(N2, N3) & message(N1, N3)) -> (N1 = N2)))
+invariant [ic3po_other1]	(forall N1, N2, N3 . (message(N1, N3) -> ~has_lock(N2)))
+invariant [ic3po_other3]	(forall N1, N2, N4, N3 . ((message(N3, N2) & message(N1, N4)) -> (N2 = N4)))
+###

@@ -1,0 +1,14 @@
+### Proof certificate: #12
+invariant [ic3po_prop10]	(forall A1, I . (msg_2b(I, A1, maxVBal(I, A1), maxVal(I, A1)) | le(maxVBal(I, A1), negone)))
+invariant [ic3po_prop7]	(forall I, B1, V2, V1 . ((msg_2a(I, B1, V1) & msg_2a(I, B1, V2)) -> (V1 = V2)))
+invariant [ic3po_prop11]	(forall I, A1, B1, B2, V1 . (msg_1b(I, A1, B2, B1, V1) -> (le(B1, negone) | msg_2b(I, A1, B1, V1) | le(B2, negone))))
+invariant [ic3po_prop3]	(forall V1, I, V2 . ((chosen(I, V1) & chosen(I, V2)) -> (V1 = V2)))
+invariant [ic3po_prop5]	(forall I, A1, B1, V1 . (msg_2b(I, A1, B1, V1) -> isSafeAt(I, B1, V1)))
+invariant [ic3po_prop12]	(forall B1, I, V1, B2, A1, B3, V2 . ((msg_1b(I, A1, B3, B1, V2) & msg_2b(I, A1, B2, V1)) -> (le(B2, B1) | le(B3, B2))))
+invariant [ic3po_prop1]	(forall A1, I . le(maxVBal(I, A1), maxBal(A1)))
+invariant [ic3po_prop8]	(forall MVAL, I, A1, B1, MBAL . (msg_1b(I, A1, B1, MBAL, MVAL) -> le(B1, maxBal(A1))))
+invariant [ic3po_prop4]	(forall I, A1, B1, V1 . (msg_2b(I, A1, B1, V1) -> msg_2a(I, B1, V1)))
+invariant [ic3po_prop9]	(forall I, A1, B1, V2, V1 . ((chosenAt(I, B1, V2) & msg_2b(I, A1, B1, V1)) -> (V1 = V2)))
+invariant [ic3po_prop6]	(forall I, A1, B1, V1 . (msg_2b(I, A1, B1, V1) -> le(B1, maxVBal(I, A1))))
+invariant [ic3po_prop2]	(forall I, B1, V1 . (msg_2a(I, B1, V1) -> isSafeAt(I, B1, V1)))
+###

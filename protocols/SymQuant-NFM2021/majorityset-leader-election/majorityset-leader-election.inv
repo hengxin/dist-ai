@@ -1,0 +1,8 @@
+### Proof certificate: #6
+invariant [ic3po_prop1]	(forall X, Y . ((leader(X) & leader(Y)) -> (X = Y)))
+invariant [ic3po_global2_7]	(forall N3, N1, N2 . ((voters(N2, N1) & voters(N2, N3)) -> (N3 = N1)))
+invariant [ic3po_global2_8]	(forall N1, N3, N2 . ((vote(N2, N1) & vote(N2, N3)) -> (N3 = N1)))
+invariant [ic3po_global1_5]	(forall N3, N1, N2 . ((member(N1, N3) & voters(N2, N3)) -> vote(N1, N2)))
+invariant [ic3po_other1]	(exists N2 . (forall N1 . ((voters(N1, N2) -> (emptyset = N2)) -> ~leader(N1))))
+invariant [ic3po_other2]	(forall N2, N1 . ((voters(N1, N2) & leader(N1)) -> majority(N2)))
+###
