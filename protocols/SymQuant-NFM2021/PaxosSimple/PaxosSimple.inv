@@ -1,0 +1,9 @@
+### Proof certificate: #7
+invariant [ic3po_prop3]	(forall V1, V2, A1, B1 . ((chosenAt(B1, V2) & msg_2b(A1, B1, V1)) -> (V1 = V2)))
+invariant [ic3po_prop1]	(forall V1, V2 . ((chosen(V1) & chosen(V2)) -> (V1 = V2)))
+invariant [ic3po_prop2]	(forall V1, A1, B1 . (msg_2b(A1, B1, V1) -> isSafeAt(B1, V1)))
+invariant [ic3po_global1_1]	(forall V2, V1, B1 . ((msg_2a(B1, V2) & msg_2a(B1, V1)) -> (V2 = V1)))
+invariant [ic3po_other2]	(forall V1, B1 . (msg_2a(B1, V1) -> isSafeAt(B1, V1)))
+invariant [ic3po_global1_3]	(forall V1, A1, B1 . (msg_2b(A1, B1, V1) -> msg_2a(B1, V1)))
+invariant [ic3po_global1_2]	(forall B1, A1 . (msg_1b(A1, B1) -> le(B1, maxBal(A1))))
+###

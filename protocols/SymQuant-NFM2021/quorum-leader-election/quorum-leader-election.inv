@@ -1,0 +1,6 @@
+### Proof certificate: #4
+invariant [ic3po_prop1]	(forall N, M . ((isleader(N) & isleader(M)) -> (N = M)))
+invariant [ic3po_global2_3]	(forall N1, N3, N2 . ((voted(N1, N2) & voted(N1, N3)) -> (N2 = N3)))
+invariant [ic3po_other1]	(forall N1, N2 . ((isleader(N1) & member(N2, quorum)) -> voted(N2, N1)))
+invariant [ic3po_global1_1]	(forall N1 . (isleader(N1) -> majority(quorum)))
+###

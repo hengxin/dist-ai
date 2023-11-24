@@ -1,0 +1,9 @@
+### Proof certificate: #7
+invariant [ic3po_prop1]	(forall P, N . (response_received(N, P) -> responseMatched(N, P)))
+invariant [ic3po_other1]	(forall R1, N1 . (response_sent(N1, R1) -> responseMatched(N1, R1)))
+invariant [ic3po_other4]	(forall R1, R2, D1 . ((db_request_sent(D1, R2) & db_request_sent(D1, R1)) -> (R1 = R2)))
+invariant [ic3po_other3]	(forall R1, N1, D1 . ((t(D1, N1) & db_request_sent(D1, R1)) -> request_sent(N1, R1)))
+invariant [ic3po_other2]	(forall N1, D1, R2 . ((db_response_sent(D1, R2) & t(D1, N1)) -> (exists R3 . (forall R1 . ((db_request_sent(D1, R3) -> (R1 = R3)) -> request_sent(N1, R1))))))
+invariant [ic3po_global1_9]	(forall R1, D1 . (db_request_sent(D1, R1) -> ~noneWithId(D1)))
+invariant [ic3po_global2_3]	(forall R2, R1, D1 . ((db_response_sent(D1, R2) & ~match(R1, R2)) -> (exists R3 . (~(R1 = R3) & db_request_sent(D1, R3)))))
+###

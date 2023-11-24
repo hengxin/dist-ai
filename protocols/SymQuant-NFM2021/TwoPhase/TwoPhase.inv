@@ -1,0 +1,14 @@
+### Proof certificate: #12
+invariant [ic3po_prop1]	(forall R1, R2 . (aborted(R1) -> ~committed(R2)))
+invariant [ic3po_other10]	(forall R1 . (aborted(R1) -> (msg_prepared(R1) -> ~tm_init)))
+invariant [ic3po_global1_7]	(msg_commit -> ~tm_init)
+invariant [ic3po_global1_9]	(msg_abort -> ~tm_init)
+invariant [ic3po_other7]	(forall R1 . (committed(R1) -> ~msg_abort))
+invariant [ic3po_other12]	(forall R2, R1 . (committed(R2) -> ~working(R1)))
+invariant [ic3po_other6]	(forall R1 . (aborted(R1) -> ~msg_commit))
+invariant [ic3po_other1]	(msg_abort -> ~msg_commit)
+invariant [ic3po_global1_1]	(forall R1 . (msg_commit -> tm_prepared(R1)))
+invariant [ic3po_other5]	(forall R1 . (committed(R1) -> ~tm_init))
+invariant [ic3po_global1_6]	(forall R1 . (msg_prepared(R1) -> ~working(R1)))
+invariant [ic3po_global1_4_1]	(forall R1 . (tm_prepared(R1) -> msg_prepared(R1)))
+###

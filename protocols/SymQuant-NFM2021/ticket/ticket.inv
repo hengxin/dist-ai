@@ -1,0 +1,10 @@
+### Proof certificate: #8
+invariant [ic3po_prop1]	(forall T1, T2 . ((pc3(T1) & pc3(T2)) -> (T1 = T2)))
+invariant [ic3po_global1_6]	(forall T2, T1 . ((pc2(T2) & m(T2, T1)) -> le(T1, next_ticket)))
+invariant [ic3po_other6]	(forall T1 . (pc2(T1) -> ~m(T1, next_ticket)))
+invariant [ic3po_other4]	(forall T1 . (pc3(T1) -> ~(next_ticket = service)))
+invariant [ic3po_other11]	(forall T2, T1 . (pc3(T2) -> (pc2(T1) -> ~m(T1, service))))
+invariant [ic3po_other19]	(forall T3, T2, T1 . ((pc2(T3) & m(T2, T1) & pc2(T2) & m(T3, T1)) -> (T3 = T2)))
+invariant [ic3po_other9]	(forall T2, T1 . ((pc2(T2) & m(T2, T1)) -> le(service, T1)))
+invariant [ic3po_other1]	le(service, next_ticket)
+###

@@ -1,0 +1,8 @@
+### Proof certificate: #6
+invariant [ic3po_prop1]	(forall N1, N2, V1, V2, K . ((table(N1, K, V1) & table(N2, K, V2)) -> ((N1 = N2) & (V1 = V2))))
+invariant [ic3po_other1]	(forall N2, K1, N1 . ((owner(N1, K1) & owner(N2, K1)) -> (N1 = N2)))
+invariant [ic3po_other4]	(forall N2, K1, V1, N1 . ((transfer_msg(N2, K1, V1) & transfer_msg(N1, K1, V1)) -> (N1 = N2)))
+invariant [ic3po_other6]	(forall N2, K1, V2, N1, V1 . ((transfer_msg(N1, K1, V2) & transfer_msg(N2, K1, V1)) -> (V2 = V1)))
+invariant [ic3po_global1_1]	(forall K1, V1, N1 . (table(N1, K1, V1) -> owner(N1, K1)))
+invariant [ic3po_other2]	(forall N2, K1, V1, N1 . (owner(N2, K1) -> ~transfer_msg(N1, K1, V1)))
+###

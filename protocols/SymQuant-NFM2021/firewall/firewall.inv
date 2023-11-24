@@ -1,0 +1,5 @@
+### Proof certificate: #3
+invariant [ic3po_prop1]	(forall D, S . ((sent(S, D) & internal(D)) -> (exists I . (internal(I) & sent(I, S)))))
+invariant [ic3po_global2_2]	(forall N2 . (allowed_in(N2) -> (exists N1 . (~(N2 = N1) & sent(N1, N2)))))
+invariant [ic3po_global3_2]	(forall N1, N2 . (sent(N2, N1) -> (internal(N2) | internal(N1))))
+###

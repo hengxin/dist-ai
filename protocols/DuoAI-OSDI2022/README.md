@@ -1,3 +1,5 @@
+repository: https://github.com/VeriGu/DuoAI.git
+
 需要注意：
 
 vertical_paxos 运行存在问题，未出结果

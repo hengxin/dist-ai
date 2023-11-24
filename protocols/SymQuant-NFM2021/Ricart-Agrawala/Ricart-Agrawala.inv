@@ -1,0 +1,5 @@
+### Proof certificate: #3
+invariant [ic3po_prop1]	(forall N1, N2 . ((holds(N1) & holds(N2)) -> (N1 = N2)))
+invariant [ic3po_global1_2]	(forall N2, N1 . (replied(N1, N2) -> ~replied(N2, N1)))
+invariant [ic3po_other1]	(forall N2, N1 . (holds(N1) -> ~replied(N2, N1)))
+###

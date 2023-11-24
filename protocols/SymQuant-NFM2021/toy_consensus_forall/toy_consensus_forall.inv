@@ -1,0 +1,6 @@
+### Proof certificate: #4
+invariant [ic3po_prop1]	(forall V1, V2 . ((decided(V1) & decided(V2)) -> (V1 = V2)))
+invariant [ic3po_other2]	(forall N1, V1 . ((decided(V1) & member(N1, voting_quorum)) -> vote(N1, V1)))
+invariant [ic3po_global2_6]	(forall N1, V1 . (vote(N1, V1) -> voted(N1)))
+invariant [ic3po_other3]	(forall V2, N1, V1 . ((vote(N1, V1) & vote(N1, V2)) -> (V1 = V2)))
+###
