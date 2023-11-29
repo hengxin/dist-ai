@@ -1,0 +1,1 @@
+conjecture forall K. (exists N. owner(N, K)) | (exists N, V. transfer_msg(N, K, V))

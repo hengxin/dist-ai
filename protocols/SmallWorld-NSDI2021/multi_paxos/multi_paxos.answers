@@ -1,0 +1,30 @@
+conjecture proposal(I,R,V) -> active(R)
+
+# proposals are unique per round
+conjecture proposal(I,R,V1) & proposal(I,R,V2) -> V1 = V2
+
+# only vote for proposed values
+conjecture vote(N,I,R,V) -> proposal(I,R,V)
+
+# decisions come from quorums of votes:
+conjecture forall R:round, V:value. (exists N:node. decision(N,I,R,V)) -> exists Q:quorum. forall N:node. member(N, Q) -> vote(N,I,R,V)
+
+# properties of none
+conjecture ~vote(N,I,none,V)
+
+# properties of joined_round, left_round
+conjecture joined_round(N,R2) & ~le(R2,R1) -> left_round(N,R1)
+conjecture one_b_msg(N,R,M) -> joined_round(N,R)
+
+# properties of one_b_msg
+conjecture one_b_msg(N,R2,M) & maxr(M,I) = none & ~le(R2,R1) -> ~vote(N,I,R1,V2)
+conjecture one_b_msg(N,R, M) & maxr(M,I) ~= none -> ~le(R,maxr(M,I)) & vote(N,I,maxr(M,I),maxv(M,I))
+conjecture one_b_msg(N,R, M) & ~le(R,ROTHER) & ~le(ROTHER,maxr(M,I)) -> ~vote(N,I,ROTHER,VOTHER)
+
+# property of choosable and active: if R2>R1 is active and V is not proposed at I, then it's not choosable at R1
+conjecture forall I:inst, R1:round, R2:round, V:value, Q:quorum. (
+   ~le(R2,R1) & active(R2) & ~proposal(I,R2,V) -> (
+        exists N:node. member(N,Q) & left_round(N,R1) & ~vote(N,I,R1,V)
+    )
+)
+
