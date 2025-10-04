@@ -2,7 +2,7 @@
 \* benchmark: tla-simple
 
 (***************************************************************************)
-(* This is a trivial example from the document "Teaching Conccurrency"     *)
+(* This is a trivial example from the document "Teaching Concurrency"     *)
 (* that appeared in                                                        *)
 (*                                                                         *)
 (*     ACM SIGACT News Volume 40, Issue 1 (March 2009), 58-62              *)
